@@ -86,15 +86,13 @@ export function SyncSettings() {
           Google Sheets
         </h3>
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Sync commitments from your Google Sheet.
-            </p>
-          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Sync commitments from your Google Sheet.
+          </p>
           <button
             onClick={handleSheetSync}
             disabled={isSheetSyncing}
-            className="px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-brand text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSheetSyncing ? "Syncing..." : "Sync Sheets"}
           </button>
@@ -104,8 +102,8 @@ export function SyncSettings() {
           <div
             className={`p-3 rounded-lg text-sm ${
               sheetResult.success
-                ? "bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                : "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                ? "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border border-emerald-500/20"
+                : "bg-rose-500/10 text-rose-800 dark:text-rose-400 border border-rose-500/20"
             }`}
           >
             {sheetResult.message}
@@ -114,20 +112,18 @@ export function SyncSettings() {
       </div>
 
       {/* Gmail Sync */}
-      <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700/40">
         <h3 className="text-sm font-medium text-gray-900 dark:text-white">
           Gmail
         </h3>
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Scan inbox for items needing your reply, approval, or decision.
-            </p>
-          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Scan inbox for items needing your reply, approval, or decision.
+          </p>
           <button
             onClick={handleGmailSync}
             disabled={isGmailSyncing}
-            className="px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-brand text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGmailSyncing ? "Syncing..." : "Sync Gmail"}
           </button>
@@ -137,8 +133,8 @@ export function SyncSettings() {
           <div
             className={`p-3 rounded-lg text-sm ${
               gmailResult.success
-                ? "bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                : "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                ? "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border border-emerald-500/20"
+                : "bg-rose-500/10 text-rose-800 dark:text-rose-400 border border-rose-500/20"
             }`}
           >
             {gmailResult.message}
@@ -147,11 +143,11 @@ export function SyncSettings() {
       </div>
 
       {/* Configuration */}
-      <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+      <div className="pt-4 border-t border-gray-200 dark:border-gray-700/40">
         <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
           Sheet Configuration
         </h3>
-        <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+        <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
           <p>Tab: Sorted</p>
           <p>Columns: B=Task, C=Date, E=Owner, F=Status, G=Comments</p>
           <p>Sync frequency: Every 6 hours</p>

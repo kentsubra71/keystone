@@ -3,19 +3,19 @@
 import { useState, useEffect } from "react";
 import type { DueFromMeItem } from "@/types";
 
-const typeColors = {
-  reply: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  approval: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-  decision: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  follow_up: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+const typeBadgeStyles = {
+  reply: "bg-blue-500/15 text-blue-800 dark:text-blue-300",
+  approval: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
+  decision: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+  follow_up: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-400",
 };
 
-const statusColors = {
-  not_started: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
-  in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  blocked: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  done: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  deferred: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
+const statusBadgeStyles = {
+  not_started: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+  in_progress: "bg-blue-500/15 text-blue-800 dark:text-blue-300",
+  blocked: "bg-rose-500/15 text-rose-800 dark:text-rose-300",
+  done: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-400",
+  deferred: "bg-gray-500/10 text-gray-700 dark:text-gray-300",
 };
 
 export function AllItemsView() {
@@ -64,7 +64,11 @@ export function AllItemsView() {
   });
 
   if (isLoading) {
-    return <div className="text-gray-500 dark:text-gray-400">Loading...</div>;
+    return (
+      <div className="flex justify-center py-12">
+        <div className="inline-block h-5 w-5 border-2 border-brand-500/30 border-t-brand-500 rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -75,10 +79,10 @@ export function AllItemsView() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-sm rounded-lg transition-all ${
               filter === f
-                ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                ? "bg-brand-500/15 text-brand-700 dark:text-brand-300 font-medium"
+                : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800/50"
             }`}
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -88,55 +92,55 @@ export function AllItemsView() {
 
       {/* Items table */}
       {filteredItems.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8 text-center">
-          <p className="text-gray-500 dark:text-gray-400">No items found</p>
+        <div className="bg-surface-card rounded-xl border border-gray-200 dark:border-gray-700/40 p-8 text-center">
+          <p className="text-gray-600 dark:text-gray-300">No items found</p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="bg-surface-card rounded-xl border border-gray-200 dark:border-gray-700/40 overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="border-b border-gray-200 dark:border-gray-700/40">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
                   Title
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
                   Type
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
                   Age
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
                   Confidence
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700/30">
               {filteredItems.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                   <td className="px-4 py-3">
-                    <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
                       {item.title}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-gray-600 dark:text-gray-300 line-clamp-1">
                       {item.rationale}
                     </div>
                   </td>
                   <td className="px-4 py-3">
                     <span
-                      className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${typeColors[item.type]}`}
+                      className={`inline-flex px-2 py-0.5 rounded-md text-xs font-medium ${typeBadgeStyles[item.type]}`}
                     >
                       {item.type.replace("_", " ")}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <span
-                      className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${statusColors[item.status]}`}
+                      className={`inline-flex px-2 py-0.5 rounded-md text-xs font-medium ${statusBadgeStyles[item.status]}`}
                     >
                       {item.status.replace("_", " ")}
                     </span>
@@ -152,19 +156,19 @@ export function AllItemsView() {
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => handleAction(item.id, "done")}
-                          className="text-xs text-green-600 hover:text-green-800 dark:text-green-400"
+                          className="text-xs font-medium text-emerald-800 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
                         >
                           Done
                         </button>
                         <button
                           onClick={() => handleAction(item.id, "snooze")}
-                          className="text-xs text-amber-600 hover:text-amber-800 dark:text-amber-400"
+                          className="text-xs text-amber-800 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
                         >
                           Snooze
                         </button>
                         <button
                           onClick={() => handleAction(item.id, "ignore")}
-                          className="text-xs text-gray-600 hover:text-gray-800 dark:text-gray-400"
+                          className="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
                         >
                           Ignore
                         </button>

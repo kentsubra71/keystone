@@ -6,8 +6,8 @@ export async function middleware(request: NextRequest) {
   const isLoggedIn = !!session;
   const { pathname } = request.nextUrl;
 
-  // Always allow auth API routes and static assets
-  if (pathname.startsWith("/api/auth")) {
+  // Always allow auth and cron API routes
+  if (pathname.startsWith("/api/auth") || pathname.startsWith("/api/cron")) {
     return NextResponse.next();
   }
 
@@ -27,6 +27,6 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Only run middleware on app routes, not static assets
-    "/((?!_next/static|_next/image|favicon.ico|api/auth).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/auth|api/cron).*)",
   ],
 };

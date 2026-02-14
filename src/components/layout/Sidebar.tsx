@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
+import { KeystoneLogo } from "@/components/brand/KeystoneLogo";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
 const navigation = [
   { name: "Today", href: "/today", icon: CalendarIcon },
@@ -14,33 +17,47 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
-      <div className="h-full px-3 py-4">
+    <aside className="w-64 bg-gradient-sidebar border-r border-gray-200 dark:border-gray-700/40 flex flex-col h-screen sticky top-0">
+      <div className="h-full px-3 py-5 flex flex-col">
+        {/* Brand */}
         <div className="mb-8 px-3">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-            Keystone
-          </h2>
+          <KeystoneLogo size="md" />
         </div>
 
-        <nav className="space-y-1">
+        {/* Navigation */}
+        <nav className="space-y-1 flex-1">
           {navigation.map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link
                 key={item.name}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+                    ? "bg-brand-500/15 text-brand-700 dark:text-brand-300 border-l-2 border-brand-500 -ml-[1px] shadow-glow-brand"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-700 dark:hover:text-gray-200"
                 }`}
               >
-                <item.icon className="h-5 w-5" />
+                <item.icon className={`h-5 w-5 ${isActive ? "text-brand-700 dark:text-brand-300" : ""}`} />
                 {item.name}
               </Link>
             );
           })}
         </nav>
+
+        {/* Sign out */}
+        <div className="mt-auto pt-4 border-t border-gray-200 dark:border-gray-700/40 px-3 flex items-center justify-between">
+          <p className="text-xs text-gray-600 dark:text-gray-400">Keystone v1.0</p>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <button
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
       </div>
     </aside>
   );

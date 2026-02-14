@@ -153,9 +153,17 @@ export async function syncGmailThreads(
         // If classified as Due-From-Me, create/update a DueFromMeItem
         if (classification.type) {
           const existingDue = dueItemMap.get(thread.threadId);
-          const firstMsgDate = firstMsg?.receivedAt || now;
+          // Aging = time since the last INBOUND message (the triggering request),
+          // NOT the first message in the thread (which could be years old if someone
+          // revives an old conversation).
+          const userLowerForAging = userEmail.toLowerCase();
+          const lastInboundMsg = [...thread.messages].reverse().find((msg) => {
+            const fromAddr = extractEmailAddress(msg.from).toLowerCase();
+            return fromAddr !== userLowerForAging;
+          });
+          const requestDate = lastInboundMsg?.receivedAt || lastMsg?.receivedAt || now;
           const agingDays = Math.floor(
-            (now.getTime() - firstMsgDate.getTime()) / (1000 * 60 * 60 * 24)
+            (now.getTime() - requestDate.getTime()) / (1000 * 60 * 60 * 24)
           );
 
           if (!existingDue) {
@@ -169,7 +177,7 @@ export async function syncGmailThreads(
               ownerEmail: userEmail, // The user owns the action, not the sender
               agingDays,
               daysInCurrentStatus: 0,
-              firstSeenAt: now,
+              firstSeenAt: requestDate,
               lastSeenAt: now,
               statusChangedAt: now,
               confidenceScore: classification.confidence,

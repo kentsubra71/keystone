@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env*.local
+*.md
+.cursor/
+.claude/
+.vscode/
+.idea/
+drizzle/*.sql
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+npm-debug.log*

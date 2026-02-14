@@ -83,7 +83,7 @@ export async function fetchRecentThreads(
 /**
  * Fetch a single thread with full message bodies.
  */
-async function fetchThreadDetail(
+export async function fetchThreadDetail(
   gmail: gmail_v1.Gmail,
   threadId: string
 ): Promise<ParsedThread | null> {

@@ -81,7 +81,7 @@ export function OwnerDirectoryManager() {
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+      <div className="text-gray-600 dark:text-gray-300">Loading...</div>
     );
   }
 
@@ -94,42 +94,42 @@ export function OwnerDirectoryManager() {
           placeholder="Display name (e.g., Ravi)"
           value={newDisplayName}
           onChange={(e) => setNewDisplayName(e.target.value)}
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700/40 rounded-lg bg-surface-card text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 transition-all"
         />
         <input
           type="email"
           placeholder="Email (e.g., ravi@example.com)"
           value={newEmail}
           onChange={(e) => setNewEmail(e.target.value)}
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700/40 rounded-lg bg-surface-card text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 transition-all"
         />
         <button
           type="submit"
-          className="px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors"
+          className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-brand text-white hover:opacity-90 transition-all"
         >
           Add
         </button>
       </form>
 
       {error && (
-        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p className="text-sm text-rose-400">{error}</p>
       )}
 
       {/* Owner list */}
       {owners.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <p className="text-gray-600 dark:text-gray-300 text-sm">
           No owner mappings defined yet.
         </p>
       ) : (
         <table className="w-full">
           <thead>
-            <tr className="text-left text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+            <tr className="text-left text-sm text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700/40">
               <th className="pb-2 font-medium">Display Name</th>
               <th className="pb-2 font-medium">Email</th>
               <th className="pb-2 font-medium w-20">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700/30">
             {owners.map((owner) => (
               <tr key={owner.id}>
                 <td className="py-3 text-gray-900 dark:text-white">
@@ -141,7 +141,7 @@ export function OwnerDirectoryManager() {
                 <td className="py-3">
                   <button
                     onClick={() => handleDeleteOwner(owner.id)}
-                    className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-sm"
+                    className="text-rose-800 dark:text-rose-300 hover:text-rose-700 dark:hover:text-rose-200 text-sm transition-colors"
                   >
                     Delete
                   </button>

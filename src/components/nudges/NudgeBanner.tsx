@@ -48,12 +48,12 @@ export function NudgeBanner() {
       {nudges.map((nudge) => (
         <div
           key={nudge.id}
-          className={`p-4 flex items-center justify-between ${
+          className={`p-4 flex items-center justify-between backdrop-blur-sm ${
             nudge.type === "blocking_others"
-              ? "bg-red-600 text-white"
+              ? "bg-rose-800/90 text-white"
               : nudge.type === "overdue"
-              ? "bg-amber-500 text-white"
-              : "bg-blue-600 text-white"
+              ? "bg-amber-800/90 text-white"
+              : "bg-brand-800/90 text-white"
           }`}
         >
           <div className="flex items-center gap-3">
@@ -65,7 +65,7 @@ export function NudgeBanner() {
           </div>
           <button
             onClick={() => dismissNudge(nudge.id)}
-            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm transition-colors"
+            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors"
           >
             Dismiss
           </button>

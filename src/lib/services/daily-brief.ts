@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { dueFromMeItems, sheetItems, dailyBriefs } from "@/lib/db/schema";
 import { getCalendarClient, getTodaysMeetings } from "@/lib/google/calendar";
-import { eq, ne, desc, and, sql } from "drizzle-orm";
+import { eq, ne, desc, asc, and, sql } from "drizzle-orm";
 
 export type DailyBriefContent = {
   topDueItems: {
@@ -32,31 +32,47 @@ export type DailyBriefContent = {
   generatedAt: string;
 };
 
+// Dynamic aging computation — consistent with /api/due-from-me route
+const dynamicAgingDays = sql<number>`EXTRACT(DAY FROM NOW() - ${dueFromMeItems.firstSeenAt})::int`;
+
 export async function generateDailyBrief(
   accessToken?: string
 ): Promise<DailyBriefContent> {
   const now = new Date();
 
-  // Get top 5 Due-From-Me items (not done, highest aging)
+  // Get top 5 Due-From-Me items (not done, highest aging — computed dynamically)
   const topItems = await db
-    .select()
+    .select({
+      id: dueFromMeItems.id,
+      title: dueFromMeItems.title,
+      type: dueFromMeItems.type,
+      rationale: dueFromMeItems.rationale,
+      ownerEmail: dueFromMeItems.ownerEmail,
+      agingDays: dynamicAgingDays,
+    })
     .from(dueFromMeItems)
-    .where(ne(dueFromMeItems.status, "done"))
-    .orderBy(desc(dueFromMeItems.agingDays))
+    .where(and(ne(dueFromMeItems.status, "done"), ne(dueFromMeItems.status, "deferred")))
+    .orderBy(asc(dueFromMeItems.firstSeenAt))
     .limit(5);
 
-  // Get overdue items (aging > 3 days for approvals/replies)
+  // Get overdue items (aging > 3 days for approvals/replies — computed dynamically)
   const overdueItems = await db
-    .select()
+    .select({
+      id: dueFromMeItems.id,
+      title: dueFromMeItems.title,
+      type: dueFromMeItems.type,
+      agingDays: dynamicAgingDays,
+    })
     .from(dueFromMeItems)
     .where(
       and(
         ne(dueFromMeItems.status, "done"),
-        sql`${dueFromMeItems.agingDays} > 3`,
+        ne(dueFromMeItems.status, "deferred"),
+        sql`EXTRACT(DAY FROM NOW() - ${dueFromMeItems.firstSeenAt}) > 3`,
         sql`${dueFromMeItems.type} IN ('reply', 'approval')`
       )
     )
-    .orderBy(desc(dueFromMeItems.agingDays));
+    .orderBy(asc(dueFromMeItems.firstSeenAt));
 
   // Get slipping commitments from sheet (overdue or at risk)
   const slipping = await db

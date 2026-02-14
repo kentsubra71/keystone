@@ -3,19 +3,101 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
+  --background: #f8fafc;
   --foreground: #171717;
+  --surface-card: #ffffff;
+  --surface-drawer: #f1f5f9;
+  --sidebar-from: #ffffff;
+  --sidebar-to: #f8fafc;
+  --logo-cutout: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(0, 0, 0, 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0b0f1a;
+  --foreground: #e2e8f0;
+  --surface-card: #141925;
+  --surface-drawer: #0d1117;
+  --sidebar-from: #111827;
+  --sidebar-to: #0f172a;
+  --logo-cutout: #0b0f1a;
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.1);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Glass morphism utility */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+}
+
+/* Gradient text utility */
+.text-gradient {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Gradient border card */
+.card-gradient-border {
+  position: relative;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.card-gradient-border::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.card-gradient-border.type-reply::before {
+  background: linear-gradient(180deg, #3b82f6, #60a5fa);
+}
+
+.card-gradient-border.type-approval::before {
+  background: linear-gradient(180deg, #f59e0b, #fbbf24);
+}
+
+.card-gradient-border.type-decision::before {
+  background: linear-gradient(180deg, #8b5cf6, #a78bfa);
+}
+
+.card-gradient-border.type-follow_up::before {
+  background: linear-gradient(180deg, #10b981, #34d399);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+/* Focus ring utility */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:ring-offset-2 focus:ring-offset-[var(--background)];
 }

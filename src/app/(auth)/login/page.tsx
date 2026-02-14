@@ -1,5 +1,6 @@
 import { auth, signIn } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { KeystoneLogo } from "@/components/brand/KeystoneLogo";
 
 export default async function LoginPage() {
   const session = await auth();
@@ -9,16 +10,30 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight">Keystone</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
-            What is due FROM me right now?
-          </p>
-        </div>
+    <main className="relative flex min-h-screen flex-col items-center justify-center p-8 overflow-hidden">
+      {/* Gradient mesh background */}
+      <div className="absolute inset-0 bg-background">
+        <div className="absolute inset-0 bg-gradient-mesh opacity-20 dark:opacity-40" />
+        {/* Subtle grid overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
+            backgroundSize: "64px 64px",
+          }}
+        />
+      </div>
 
-        <div className="mt-8 space-y-4">
+      {/* Glass card */}
+      <div className="relative z-10 w-full max-w-md">
+        <div className="glass rounded-2xl p-10 shadow-glow-brand-lg">
+          <div className="flex flex-col items-center mb-8">
+            <KeystoneLogo size="lg" />
+            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+              What is due from me right now?
+            </p>
+          </div>
+
           <form
             action={async () => {
               "use server";
@@ -27,7 +42,7 @@ export default async function LoginPage() {
           >
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-3 rounded-lg bg-white px-4 py-3 text-gray-700 shadow-md border border-gray-300 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-center gap-3 rounded-xl bg-white px-5 py-3.5 text-gray-700 font-medium shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-200"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24">
                 <path
@@ -50,11 +65,11 @@ export default async function LoginPage() {
               Sign in with Google
             </button>
           </form>
-        </div>
 
-        <p className="text-center text-sm text-gray-500 dark:text-gray-400">
-          Single-user executive assistant
-        </p>
+          <p className="text-center text-xs text-gray-600 dark:text-gray-300 mt-6">
+            Single-user executive assistant
+          </p>
+        </div>
       </div>
     </main>
   );

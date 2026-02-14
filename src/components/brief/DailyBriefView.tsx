@@ -70,7 +70,11 @@ export function DailyBriefView() {
   }
 
   if (isLoading) {
-    return <div className="text-gray-500 dark:text-gray-400">Loading...</div>;
+    return (
+      <div className="flex justify-center py-12">
+        <div className="inline-block h-5 w-5 border-2 border-brand-500/30 border-t-brand-500 rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -80,47 +84,46 @@ export function DailyBriefView() {
         <button
           onClick={generateNewBrief}
           disabled={isGenerating}
-          className="px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors disabled:opacity-50"
+          className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-brand text-white hover:opacity-90 transition-all disabled:opacity-50"
         >
           {isGenerating ? "Generating..." : "Generate New Brief"}
         </button>
       </div>
 
       {!brief ? (
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8 text-center">
-          <p className="text-gray-500 dark:text-gray-400">
-            No brief generated yet. Click "Generate New Brief" to create one.
+        <div className="bg-surface-card rounded-xl border border-gray-200 dark:border-gray-700/40 p-8 text-center">
+          <p className="text-gray-600 dark:text-gray-300">
+            No brief generated yet. Click &quot;Generate New Brief&quot; to create one.
           </p>
         </div>
       ) : (
         <>
-          {/* Generated timestamp */}
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
             Generated: {new Date(brief.generatedAt).toLocaleString()}
           </p>
 
           {/* Top Due Items */}
-          <section className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <section className="bg-surface-card rounded-xl border border-gray-200 dark:border-gray-700/40 p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               Top Due From You
             </h2>
             {brief.topDueItems.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400">
+              <p className="text-gray-600 dark:text-gray-300">
                 Nothing due from you!
               </p>
             ) : (
               <ul className="space-y-3">
                 {brief.topDueItems.map((item, index) => (
                   <li key={item.id} className="flex items-start gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-sm font-medium text-gray-600 dark:text-gray-300">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-500/15 flex items-center justify-center text-sm font-medium text-brand-700 dark:text-brand-300">
                       {index + 1}
                     </span>
                     <div>
                       <p className="text-gray-900 dark:text-white font-medium">
                         {item.title}
                       </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {item.type.replace("_", " ")} • {item.agingDays} days
+                      <p className="text-sm text-gray-600 dark:text-gray-300">
+                        {item.type.replace("_", " ")} &bull; {item.agingDays} days
                       </p>
                     </div>
                   </li>
@@ -131,15 +134,15 @@ export function DailyBriefView() {
 
           {/* Overdue Items */}
           {brief.overdueItems.length > 0 && (
-            <section className="bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 p-6">
-              <h2 className="text-lg font-semibold text-red-900 dark:text-red-200 mb-4">
+            <section className="bg-rose-500/5 rounded-xl border border-rose-500/20 p-6">
+              <h2 className="text-lg font-semibold text-rose-800 dark:text-rose-300 mb-4">
                 Overdue
               </h2>
               <ul className="space-y-2">
                 {brief.overdueItems.map((item) => (
                   <li
                     key={item.id}
-                    className="text-red-800 dark:text-red-300"
+                    className="text-rose-800 dark:text-rose-300"
                   >
                     {item.title} ({item.agingDays} days)
                   </li>
@@ -150,24 +153,24 @@ export function DailyBriefView() {
 
           {/* Meetings Needing Prep */}
           {brief.meetingsNeedingPrep.length > 0 && (
-            <section className="bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 p-6">
-              <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-200 mb-4">
+            <section className="bg-blue-500/5 rounded-xl border border-blue-500/20 p-6">
+              <h2 className="text-lg font-semibold text-blue-800 dark:text-blue-300 mb-4">
                 Meetings Needing Prep
               </h2>
               <ul className="space-y-3">
                 {brief.meetingsNeedingPrep.map((meeting) => (
                   <li key={meeting.id}>
-                    <p className="text-blue-900 dark:text-blue-200 font-medium">
+                    <p className="text-blue-800 dark:text-blue-300 font-medium">
                       {meeting.summary}
                     </p>
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                    <p className="text-sm text-blue-800/80 dark:text-blue-400/70">
                       {new Date(meeting.startTime).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
                     </p>
                     {meeting.relatedItems.length > 0 && (
-                      <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                      <p className="text-sm text-blue-800/60 dark:text-blue-400/50 mt-1">
                         Related: {meeting.relatedItems.join(", ")}
                       </p>
                     )}
@@ -179,20 +182,20 @@ export function DailyBriefView() {
 
           {/* Slipping Commitments */}
           {brief.slippingCommitments.length > 0 && (
-            <section className="bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800 p-6">
-              <h2 className="text-lg font-semibold text-amber-900 dark:text-amber-200 mb-4">
+            <section className="bg-amber-500/5 rounded-xl border border-amber-500/20 p-6">
+              <h2 className="text-lg font-semibold text-amber-800 dark:text-amber-400 mb-4">
                 Slipping Commitments
               </h2>
               <ul className="space-y-2">
                 {brief.slippingCommitments.map((item) => (
                   <li key={item.id}>
-                    <p className="text-amber-900 dark:text-amber-200">
+                    <p className="text-amber-800 dark:text-amber-300">
                       {item.commitment}
                     </p>
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                    <p className="text-sm text-amber-800/80 dark:text-amber-400/70">
                       Owner: {item.ownerEmail || "Unassigned"}
                       {item.dueDate &&
-                        ` • Due: ${new Date(item.dueDate).toLocaleDateString()}`}
+                        ` \u2022 Due: ${new Date(item.dueDate).toLocaleDateString()}`}
                     </p>
                   </li>
                 ))}

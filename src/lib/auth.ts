@@ -91,6 +91,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
+
+        // Store tokens in DB for cron access
+        if (account.refresh_token && token.email) {
+          try {
+            const { db } = await import("@/lib/db");
+            const { appSettings } = await import("@/lib/db/schema");
+            const { eq } = await import("drizzle-orm");
+
+            await db
+              .insert(appSettings)
+              .values({
+                key: "oauth_tokens",
+                value: {
+                  refreshToken: account.refresh_token,
+                  accessToken: account.access_token,
+                  expiresAt: account.expires_at,
+                  userEmail: token.email,
+                },
+              })
+              .onConflictDoUpdate({
+                target: appSettings.key,
+                set: {
+                  value: {
+                    refreshToken: account.refresh_token,
+                    accessToken: account.access_token,
+                    expiresAt: account.expires_at,
+                    userEmail: token.email,
+                  },
+                  updatedAt: new Date(),
+                },
+              });
+          } catch (err) {
+            console.error("Failed to store OAuth tokens for cron:", err);
+          }
+        }
+
         return token;
       }
 
