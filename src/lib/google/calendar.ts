@@ -1,7 +1,10 @@
 import { google, calendar_v3 } from "googleapis";
 
 export function getCalendarClient(accessToken: string): calendar_v3.Calendar {
-  const auth = new google.auth.OAuth2();
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
   auth.setCredentials({ access_token: accessToken });
   return google.calendar({ version: "v3", auth });
 }

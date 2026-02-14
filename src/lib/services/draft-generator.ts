@@ -1,4 +1,5 @@
 import { gmail_v1 } from "googleapis";
+import OpenAI from "openai";
 
 export type DraftInput = {
   threadId: string;
@@ -6,35 +7,68 @@ export type DraftInput = {
   to: string[];
   cc: string[];
   subject: string;
-  snippet: string;
+  snippet: string; // Original thread context
 };
 
-export function generateDraftBody(input: DraftInput): string {
-  // Clean and format the transcript into a professional email
-  const cleanedTranscript = input.transcript
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiClient;
+}
+
+/**
+ * Convert a spoken transcript into a professional email body using GPT-4o-mini.
+ * Falls back to basic text cleanup if the API is unavailable.
+ */
+export async function generateDraftBody(input: DraftInput): Promise<string> {
+  try {
+    const client = getOpenAIClient();
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a professional email writer. Convert the user's spoken transcript into a clear, professional email reply. Rules:
+- Preserve the meaning and intent exactly — do not add or remove information
+- Use a neutral, professional tone
+- Keep it concise
+- Do not add greetings like "Dear" or sign-offs like "Best regards" — just the body
+- Fix grammar, filler words ("um", "uh", "like"), and spoken artifacts
+- Output plain text only, no formatting`,
+        },
+        {
+          role: "user",
+          content: `Original email context (for reference only, do not quote it):\nSubject: ${input.subject}\nSnippet: ${input.snippet}\n\nMy spoken response to convert into an email:\n${input.transcript}`,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 500,
+    });
+
+    const body = response.choices[0]?.message?.content?.trim();
+    if (body) return body;
+  } catch (error) {
+    console.error("GPT draft generation failed, using fallback:", error);
+  }
+
+  // Fallback: basic text cleanup
+  return input.transcript
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/\bi\b/g, "I"); // Capitalize 'I'
-
-  // Simple formatting - capitalize first letter of sentences
-  const formattedBody = cleanedTranscript
-    .split(/([.!?]\s+)/)
-    .map((segment, index) => {
-      if (index % 2 === 0 && segment.length > 0) {
-        return segment.charAt(0).toUpperCase() + segment.slice(1);
-      }
-      return segment;
-    })
-    .join("");
-
-  return formattedBody;
+    .replace(/\b(um|uh|like|you know)\b\s*/gi, "")
+    .replace(/\bi\b/g, "I")
+    .replace(/(^|[.!?]\s+)([a-z])/g, (_, prefix, char) => prefix + char.toUpperCase());
 }
 
 export async function createGmailDraft(
   gmail: gmail_v1.Gmail,
   input: DraftInput
 ): Promise<string> {
-  const body = generateDraftBody(input);
+  const body = await generateDraftBody(input);
 
   // Build the email message
   const to = input.to.join(", ");
@@ -43,7 +77,7 @@ export async function createGmailDraft(
   const messageParts = [
     `To: ${to}`,
     cc ? `Cc: ${cc}` : "",
-    `Subject: Re: ${input.subject.replace(/^Re:\s*/i, "")}`,
+    `Subject: Re: ${input.subject.replace(/^(Re:\s*)+/i, "Re: ")}`,
     "Content-Type: text/plain; charset=utf-8",
     "",
     body,
@@ -51,14 +85,14 @@ export async function createGmailDraft(
 
   const message = messageParts.join("\r\n");
 
-  // Base64 encode the message
+  // Base64url encode the message
   const encodedMessage = Buffer.from(message)
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 
-  // Create the draft
+  // Create the draft in Gmail
   const draft = await gmail.users.drafts.create({
     userId: "me",
     requestBody: {

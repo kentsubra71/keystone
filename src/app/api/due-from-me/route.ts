@@ -14,28 +14,54 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const filter = searchParams.get("filter"); // "due" | "blocking" | "all"
 
+    // Select with dynamically computed aging fields
+    const selectFields = {
+      id: dueFromMeItems.id,
+      type: dueFromMeItems.type,
+      status: dueFromMeItems.status,
+      title: dueFromMeItems.title,
+      source: dueFromMeItems.source,
+      sourceId: dueFromMeItems.sourceId,
+      blockingWho: dueFromMeItems.blockingWho,
+      ownerEmail: dueFromMeItems.ownerEmail,
+      firstSeenAt: dueFromMeItems.firstSeenAt,
+      lastSeenAt: dueFromMeItems.lastSeenAt,
+      statusChangedAt: dueFromMeItems.statusChangedAt,
+      confidenceScore: dueFromMeItems.confidenceScore,
+      rationale: dueFromMeItems.rationale,
+      suggestedAction: dueFromMeItems.suggestedAction,
+      notes: dueFromMeItems.notes,
+      createdAt: dueFromMeItems.createdAt,
+      // Dynamic aging: compute from first_seen_at instead of using stored value
+      agingDays: sql<number>`EXTRACT(DAY FROM NOW() - ${dueFromMeItems.firstSeenAt})::int`.as("aging_days"),
+      daysInCurrentStatus: sql<number>`EXTRACT(DAY FROM NOW() - ${dueFromMeItems.statusChangedAt})::int`.as("days_in_current_status"),
+    };
+
     let items;
 
     if (filter === "blocking") {
-      // Items where I am blocking others
       items = await db
-        .select()
+        .select(selectFields)
         .from(dueFromMeItems)
         .where(
           and(
             sql`${dueFromMeItems.blockingWho} IS NOT NULL`,
-            ne(dueFromMeItems.status, "done")
+            ne(dueFromMeItems.status, "done"),
+            ne(dueFromMeItems.status, "deferred")
           )
         );
     } else if (filter === "due") {
-      // Items due from me (not done)
       items = await db
-        .select()
+        .select(selectFields)
         .from(dueFromMeItems)
-        .where(ne(dueFromMeItems.status, "done"));
+        .where(
+          and(
+            ne(dueFromMeItems.status, "done"),
+            ne(dueFromMeItems.status, "deferred")
+          )
+        );
     } else {
-      // All items
-      items = await db.select().from(dueFromMeItems);
+      items = await db.select(selectFields).from(dueFromMeItems);
     }
 
     return NextResponse.json({ items });

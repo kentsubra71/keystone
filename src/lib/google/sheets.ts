@@ -78,7 +78,10 @@ export function generateRowFingerprint(row: (string | null | undefined)[]): stri
 }
 
 export function getGoogleSheetsClient(accessToken: string): sheets_v4.Sheets {
-  const auth = new google.auth.OAuth2();
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
   auth.setCredentials({ access_token: accessToken });
   return google.sheets({ version: "v4", auth });
 }
@@ -128,11 +131,18 @@ export const DEFAULT_SHEET_CONFIG: SheetConfig = {
   },
 };
 
+export type FetchedRow = {
+  row: SheetRow;
+  fingerprint: string;
+  rowNumber: number; // 1-based sheet row number (stable identifier)
+};
+
 export async function fetchSheetData(
   sheets: sheets_v4.Sheets,
   config: SheetConfig
-): Promise<{ rows: SheetRow[]; fingerprints: string[] }> {
-  const range = `${config.sheetName}!A${config.headerRow + 1}:Z`;
+): Promise<FetchedRow[]> {
+  const dataStartRow = config.headerRow + 1;
+  const range = `${config.sheetName}!A${dataStartRow}:Z`;
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: config.spreadsheetId,
@@ -140,54 +150,72 @@ export async function fetchSheetData(
   });
 
   const values = response.data.values || [];
-  const rows: SheetRow[] = [];
-  const fingerprints: string[] = [];
+  const results: FetchedRow[] = [];
 
-  for (const row of values) {
-    const commitment = row[config.columnMapping.commitment]?.toString().trim();
+  for (let i = 0; i < values.length; i++) {
+    const raw = values[i];
+    const commitment = raw[config.columnMapping.commitment]?.toString().trim();
 
     // Skip empty rows
-    if (!commitment) {
-      continue;
-    }
+    if (!commitment) continue;
 
-    rows.push({
-      commitment,
-      owner: row[config.columnMapping.owner]?.toString().trim() || null,
-      dueDate: row[config.columnMapping.dueDate]?.toString().trim() || null,
-      status: row[config.columnMapping.status]?.toString().trim() || null,
-      comments: row[config.columnMapping.comments]?.toString().trim() || null,
+    results.push({
+      row: {
+        commitment,
+        owner: raw[config.columnMapping.owner]?.toString().trim() || null,
+        dueDate: raw[config.columnMapping.dueDate]?.toString().trim() || null,
+        status: raw[config.columnMapping.status]?.toString().trim() || null,
+        comments: raw[config.columnMapping.comments]?.toString().trim() || null,
+      },
+      // Fingerprint only over the mapped columns (not the entire row)
+      fingerprint: generateRowFingerprint([
+        commitment,
+        raw[config.columnMapping.owner] ?? "",
+        raw[config.columnMapping.dueDate] ?? "",
+        raw[config.columnMapping.status] ?? "",
+        raw[config.columnMapping.comments] ?? "",
+      ]),
+      rowNumber: dataStartRow + i,
     });
-
-    fingerprints.push(generateRowFingerprint(row));
   }
 
-  return { rows, fingerprints };
+  return results;
 }
 
 export function parseDueDate(dateStr: string | null | undefined): Date | null {
-  if (!dateStr) {
-    return null;
+  if (!dateStr) return null;
+
+  const trimmed = dateStr.trim();
+
+  // Try ISO / native Date parsing first
+  const date = new Date(trimmed);
+  if (!isNaN(date.getTime())) return date;
+
+  // Try DD/MM/YYYY — day > 12 disambiguates (e.g., 25/01/2024)
+  const slashDate = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashDate) {
+    const [, a, b, yearStr] = slashDate;
+    const num1 = parseInt(a);
+    const num2 = parseInt(b);
+    const year = parseInt(yearStr);
+
+    // If first number > 12, it must be a day (DD/MM/YYYY)
+    if (num1 > 12) {
+      return new Date(year, num2 - 1, num1);
+    }
+    // If second number > 12, it must be a day (MM/DD/YYYY)
+    if (num2 > 12) {
+      return new Date(year, num1 - 1, num2);
+    }
+    // Ambiguous (both <= 12) — default to DD/MM/YYYY (more common internationally)
+    return new Date(year, num2 - 1, num1);
   }
 
-  // Try various date formats
-  const date = new Date(dateStr);
-  if (!isNaN(date.getTime())) {
-    return date;
-  }
-
-  // Try DD/MM/YYYY format
-  const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (ddmmyyyy) {
-    const [, day, month, year] = ddmmyyyy;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  }
-
-  // Try MM/DD/YYYY format
-  const mmddyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (mmddyyyy) {
-    const [, month, day, year] = mmddyyyy;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  // Try DD-MM-YYYY
+  const dashDate = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashDate) {
+    const [, day, month, yearStr] = dashDate;
+    return new Date(parseInt(yearStr), parseInt(month) - 1, parseInt(day));
   }
 
   return null;

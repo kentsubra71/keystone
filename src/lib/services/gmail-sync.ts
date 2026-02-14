@@ -1,95 +1,129 @@
 import { db } from "@/lib/db";
 import { gmailThreads, dueFromMeItems } from "@/lib/db/schema";
 import { getGmailClient, fetchRecentThreads, extractEmailAddress } from "@/lib/google/gmail";
-import {
-  classifyEmail,
-  getBlockingPerson,
-  getSuggestedAction,
-} from "./gmail-classifier";
-import { eq } from "drizzle-orm";
+import type { ParsedThread } from "@/lib/google/gmail";
+import { classifyThreads, getSuggestedAction } from "./gmail-classifier";
+import { eq, inArray } from "drizzle-orm";
 
 export type GmailSyncResult = {
   success: boolean;
+  threadsFetched: number;
   threadsProcessed: number;
+  threadsSkipped: number;
   dueItemsCreated: number;
+  dueItemsUpdated: number;
   errors: string[];
 };
 
-// Mailing list patterns to ignore (emails to these are not "due from you")
-const MAILING_LIST_PATTERNS = [
-  /all@/i,
-  /everyone@/i,
-  /team@/i,
-  /group@/i,
-  /staff@/i,
-  /company@/i,
-  /-all@/i,
-  /hurixall/i,
-];
+/**
+ * Filter out threads that shouldn't be classified:
+ * - Mailing lists (detected by List-Unsubscribe / List-Id headers)
+ * - Promotional / forum categories
+ * - Threads where user is not in TO (only CC'd)
+ */
+function shouldProcessThread(thread: ParsedThread, userEmail: string): boolean {
+  // Skip mailing list threads (detected by RFC 2369 headers)
+  if (thread.isMailingList) return false;
 
-function isMailingListEmail(toAddresses: string[]): boolean {
-  return toAddresses.some((addr) =>
-    MAILING_LIST_PATTERNS.some((pattern) => pattern.test(addr))
+  // Skip promotional and forum categories
+  const skipLabels = ["CATEGORY_PROMOTIONS", "CATEGORY_FORUMS", "CATEGORY_UPDATES", "SPAM", "TRASH"];
+  if (thread.labels.some((l) => skipLabels.includes(l))) return false;
+
+  // Require user to be in TO of at least one message in the thread
+  const userLower = userEmail.toLowerCase();
+  const userIsInTo = thread.messages.some((msg) =>
+    msg.to.some((addr) => addr.toLowerCase() === userLower)
   );
-}
+  if (!userIsInTo) return false;
 
-function isUserDirectlyAddressed(toAddresses: string[], userEmail: string): boolean {
-  const userEmailLower = userEmail.toLowerCase();
-  return toAddresses.some((addr) => addr.toLowerCase().includes(userEmailLower));
+  return true;
 }
 
 export async function syncGmailThreads(
   accessToken: string,
-  userEmail?: string
+  userEmail: string
 ): Promise<GmailSyncResult> {
   const result: GmailSyncResult = {
     success: false,
+    threadsFetched: 0,
     threadsProcessed: 0,
+    threadsSkipped: 0,
     dueItemsCreated: 0,
-    skippedMailingList: 0,
+    dueItemsUpdated: 0,
     errors: [],
-  } as GmailSyncResult & { skippedMailingList: number };
+  };
 
   try {
     const gmail = getGmailClient(accessToken);
-    const threads = await fetchRecentThreads(gmail, 50);
+    const allThreads = await fetchRecentThreads(gmail, 500);
+    result.threadsFetched = allThreads.length;
+
+    // Filter to actionable threads
+    const threadsToProcess = allThreads.filter((t) => shouldProcessThread(t, userEmail));
+    result.threadsSkipped = allThreads.length - threadsToProcess.length;
+
+    if (threadsToProcess.length === 0) {
+      result.success = true;
+      return result;
+    }
+
+    // Batch lookup: which threads already exist in DB?
+    const threadIds = threadsToProcess.map((t) => t.threadId);
+    const existingThreadRows = await db
+      .select({ threadId: gmailThreads.threadId })
+      .from(gmailThreads)
+      .where(inArray(gmailThreads.threadId, threadIds));
+    const existingThreadSet = new Set(existingThreadRows.map((r) => r.threadId));
+
+    // Batch lookup: which due-from-me items exist and what's their status?
+    const existingDueItems = await db
+      .select({
+        sourceId: dueFromMeItems.sourceId,
+        status: dueFromMeItems.status,
+        id: dueFromMeItems.id,
+      })
+      .from(dueFromMeItems)
+      .where(inArray(dueFromMeItems.sourceId, threadIds));
+    const dueItemMap = new Map(existingDueItems.map((r) => [r.sourceId, r]));
+
+    // Don't reclassify threads the user already acted on
+    const actedOnSourceIds = new Set(
+      existingDueItems
+        .filter((r) => r.status === "done" || r.status === "deferred")
+        .map((r) => r.sourceId)
+    );
+
+    const threadsNeedingClassification = threadsToProcess.filter(
+      (t) => !actedOnSourceIds.has(t.threadId)
+    );
+
+    // Classify all threads via GPT-4o-mini (batched, concurrent)
+    const classifications = await classifyThreads(threadsNeedingClassification, userEmail);
+    result.threadsProcessed = threadsNeedingClassification.length;
 
     const now = new Date();
 
-    for (const thread of threads) {
+    // Process each classified thread
+    for (const thread of threadsNeedingClassification) {
+      const classification = classifications.get(thread.threadId);
+      if (!classification) continue;
+
       try {
-        // Skip mailing list emails - they're not directly "due from you"
-        if (isMailingListEmail(thread.to)) {
-          (result as any).skippedMailingList++;
-          continue;
-        }
+        // Get the first message's sender info for the thread record
+        const firstMsg = thread.messages[0];
+        const lastMsg = thread.messages[thread.messages.length - 1];
 
-        // Optionally: only process if user is directly in TO (not just CC)
-        // if (userEmail && !isUserDirectlyAddressed(thread.to, userEmail)) {
-        //   continue;
-        // }
-
-        // Check if we already have this thread
-        const existing = await db
-          .select()
-          .from(gmailThreads)
-          .where(eq(gmailThreads.threadId, thread.threadId))
-          .limit(1);
-
-        // Classify the email
-        const classification = classifyEmail(thread);
-
-        if (existing.length > 0) {
-          // Update existing thread
+        // Upsert gmailThreads record
+        if (existingThreadSet.has(thread.threadId)) {
           await db
             .update(gmailThreads)
             .set({
               subject: thread.subject,
               snippet: thread.snippet,
-              fromAddress: thread.from,
-              toAddresses: thread.to,
-              ccAddresses: thread.cc,
-              receivedAt: thread.receivedAt,
+              fromAddress: lastMsg?.from || "",
+              toAddresses: lastMsg?.to || [],
+              ccAddresses: lastMsg?.cc || [],
+              receivedAt: lastMsg?.receivedAt || now,
               labels: thread.labels,
               dueFromMeType: classification.type,
               confidenceScore: classification.confidence,
@@ -99,16 +133,15 @@ export async function syncGmailThreads(
             })
             .where(eq(gmailThreads.threadId, thread.threadId));
         } else {
-          // Insert new thread
           await db.insert(gmailThreads).values({
             threadId: thread.threadId,
-            messageId: thread.messageId,
+            messageId: lastMsg?.messageId || "",
             subject: thread.subject,
             snippet: thread.snippet,
-            fromAddress: thread.from,
-            toAddresses: thread.to,
-            ccAddresses: thread.cc,
-            receivedAt: thread.receivedAt,
+            fromAddress: lastMsg?.from || "",
+            toAddresses: lastMsg?.to || [],
+            ccAddresses: lastMsg?.cc || [],
+            receivedAt: lastMsg?.receivedAt || now,
             labels: thread.labels,
             dueFromMeType: classification.type,
             confidenceScore: classification.confidence,
@@ -117,30 +150,23 @@ export async function syncGmailThreads(
           });
         }
 
-        result.threadsProcessed++;
-
         // If classified as Due-From-Me, create/update a DueFromMeItem
         if (classification.type) {
-          const existingItem = await db
-            .select()
-            .from(dueFromMeItems)
-            .where(eq(dueFromMeItems.sourceId, thread.threadId))
-            .limit(1);
-
+          const existingDue = dueItemMap.get(thread.threadId);
+          const firstMsgDate = firstMsg?.receivedAt || now;
           const agingDays = Math.floor(
-            (now.getTime() - thread.receivedAt.getTime()) /
-              (1000 * 60 * 60 * 24)
+            (now.getTime() - firstMsgDate.getTime()) / (1000 * 60 * 60 * 24)
           );
 
-          if (existingItem.length === 0) {
+          if (!existingDue) {
             await db.insert(dueFromMeItems).values({
               type: classification.type,
               status: "not_started",
               title: thread.subject,
               source: "gmail",
               sourceId: thread.threadId,
-              blockingWho: getBlockingPerson(thread),
-              ownerEmail: extractEmailAddress(thread.from),
+              blockingWho: classification.blockingWho || (lastMsg ? extractEmailAddress(lastMsg.from) : null),
+              ownerEmail: userEmail, // The user owns the action, not the sender
               agingDays,
               daysInCurrentStatus: 0,
               firstSeenAt: now,
@@ -148,12 +174,11 @@ export async function syncGmailThreads(
               statusChangedAt: now,
               confidenceScore: classification.confidence,
               rationale: classification.rationale,
-              suggestedAction: getSuggestedAction(classification.type),
+              suggestedAction: classification.suggestedAction || getSuggestedAction(classification.type),
             });
-
             result.dueItemsCreated++;
           } else {
-            // Update aging
+            // Update existing item (don't change status — user may have set it)
             await db
               .update(dueFromMeItems)
               .set({
@@ -161,14 +186,18 @@ export async function syncGmailThreads(
                 lastSeenAt: now,
                 confidenceScore: classification.confidence,
                 rationale: classification.rationale,
+                blockingWho: classification.blockingWho || undefined,
+                suggestedAction: classification.suggestedAction || undefined,
                 updatedAt: now,
               })
-              .where(eq(dueFromMeItems.sourceId, thread.threadId));
+              .where(eq(dueFromMeItems.id, existingDue.id));
+            result.dueItemsUpdated++;
           }
         }
       } catch (threadError) {
-        console.error(`Failed to process thread ${thread.threadId}:`, threadError);
-        result.errors.push(`Thread ${thread.threadId}: ${threadError}`);
+        const msg = threadError instanceof Error ? threadError.message : String(threadError);
+        console.error(`Failed to process thread ${thread.threadId}:`, msg);
+        result.errors.push(`Thread ${thread.threadId}: ${msg}`);
       }
     }
 

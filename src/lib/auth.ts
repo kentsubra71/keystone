@@ -4,6 +4,39 @@ import Credentials from "next-auth/providers/credentials";
 
 const isMockAuth = process.env.MOCK_AUTH === "true";
 
+async function refreshAccessToken(token: Record<string, unknown>): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        grant_type: "refresh_token",
+        refresh_token: token.refreshToken as string,
+      }),
+    });
+
+    const refreshed = await response.json();
+
+    if (!response.ok) {
+      throw new Error(refreshed.error || "Token refresh failed");
+    }
+
+    return {
+      ...token,
+      accessToken: refreshed.access_token,
+      // Google returns expires_in (seconds), convert to absolute timestamp
+      expiresAt: Math.floor(Date.now() / 1000) + refreshed.expires_in,
+      // Google may or may not return a new refresh token
+      refreshToken: refreshed.refresh_token ?? token.refreshToken,
+    };
+  } catch (error) {
+    console.error("Failed to refresh access token:", error);
+    return { ...token, error: "RefreshTokenError" };
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: isMockAuth
     ? [
@@ -38,32 +71,46 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               access_type: "offline",
               response_type: "code",
               scope:
-                "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/spreadsheets.readonly",
+                "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/spreadsheets.readonly",
             },
           },
         }),
       ],
   callbacks: {
     async signIn({ user }) {
-      // Single user restriction
+      // Single user restriction (case-insensitive)
       const allowedEmail = process.env.ALLOWED_USER_EMAIL;
-      if (allowedEmail && user.email !== allowedEmail) {
+      if (allowedEmail && user.email?.toLowerCase() !== allowedEmail.toLowerCase()) {
         return false;
       }
       return true;
     },
     async jwt({ token, account }) {
-      // Persist the OAuth access_token and refresh_token to the token
+      // On initial sign-in, persist OAuth tokens
       if (account) {
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
+        return token;
       }
+
+      // If token hasn't expired, return it as-is
+      if (typeof token.expiresAt === "number" && Date.now() < token.expiresAt * 1000) {
+        return token;
+      }
+
+      // Token has expired — refresh it
+      if (token.refreshToken) {
+        return refreshAccessToken(token);
+      }
+
       return token;
     },
     async session({ session, token }) {
-      // Add access token to session for API calls
       session.accessToken = token.accessToken as string;
+      if (token.error) {
+        session.error = token.error as string;
+      }
       return session;
     },
   },
@@ -79,5 +126,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
+    error?: string;
   }
 }

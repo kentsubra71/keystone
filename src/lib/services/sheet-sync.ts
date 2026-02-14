@@ -8,13 +8,14 @@ import {
   DEFAULT_SHEET_CONFIG,
   type SheetConfig,
 } from "@/lib/google/sheets";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 export type SyncResult = {
   success: boolean;
   added: number;
   updated: number;
   unchanged: number;
+  disappeared: number;
   errors: string[];
 };
 
@@ -27,11 +28,11 @@ export async function syncSheetItems(
     added: 0,
     updated: 0,
     unchanged: 0,
+    disappeared: 0,
     errors: [],
   };
 
   try {
-    // Get sheets client (prefer service account for background sync)
     const sheets = getGoogleSheetsClientWithServiceAccount();
 
     if (!sheets) {
@@ -44,8 +45,8 @@ export async function syncSheetItems(
       return result;
     }
 
-    // Fetch sheet data
-    const { rows, fingerprints } = await fetchSheetData(sheets, config);
+    // Fetch sheet data (now returns row numbers as stable identifiers)
+    const fetchedRows = await fetchSheetData(sheets, config);
 
     // Get owner directory for mapping
     const owners = await db.select().from(ownerDirectory);
@@ -53,21 +54,31 @@ export async function syncSheetItems(
       owners.map((o) => [o.displayName.toLowerCase(), o.email])
     );
 
-    // Get existing items by fingerprint
+    // Get ALL existing items, keyed by row number for fast lookup
     const existingItems = await db.select().from(sheetItems);
+    const existingByRowNumber = new Map(
+      existingItems
+        .filter((item) => item.sourceRowNumber != null)
+        .map((item) => [item.sourceRowNumber!, item])
+    );
+    // Fallback: also index by fingerprint for items that predate the rowNumber migration
     const existingByFingerprint = new Map(
-      existingItems.map((item) => [item.sourceRowFingerprint, item])
+      existingItems
+        .filter((item) => item.sourceRowNumber == null)
+        .map((item) => [item.sourceRowFingerprint, item])
     );
 
     const now = new Date();
-    const seenFingerprints = new Set<string>();
+    const seenRowNumbers = new Set<number>();
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const fingerprint = fingerprints[i];
-      seenFingerprints.add(fingerprint);
+    for (const fetched of fetchedRows) {
+      const { row, fingerprint, rowNumber } = fetched;
+      seenRowNumbers.add(rowNumber);
 
-      const existing = existingByFingerprint.get(fingerprint);
+      // Look up existing item by row number first, then fallback to fingerprint
+      const existing =
+        existingByRowNumber.get(rowNumber) ||
+        existingByFingerprint.get(fingerprint);
 
       // Map owner label to email
       const ownerLabel = row.owner;
@@ -77,20 +88,27 @@ export async function syncSheetItems(
       const needsOwnerMapping = !!ownerLabel && !ownerEmail;
 
       // Normalize status
-      const { status, needsReview } = normalizeStatus(row.status);
+      const { status } = normalizeStatus(row.status);
 
       // Parse due date
       const dueDate = parseDueDate(row.dueDate);
 
-      // Check if overdue or at risk
-      const isOverdue = dueDate ? dueDate < now : false;
-      const isAtRisk =
-        dueDate && !isOverdue
-          ? dueDate.getTime() - now.getTime() < 3 * 24 * 60 * 60 * 1000 // 3 days
-          : false;
-
       if (existing) {
-        // Update existing item
+        // Check if anything actually changed
+        if (
+          existing.sourceRowFingerprint === fingerprint &&
+          existing.sourceRowNumber === rowNumber
+        ) {
+          result.unchanged++;
+          // Still update lastSeenAt to show the item is alive
+          await db
+            .update(sheetItems)
+            .set({ lastSeenAt: now, lastSyncedAt: now })
+            .where(eq(sheetItems.id, existing.id));
+          continue;
+        }
+
+        // Data changed — update the existing record (not create a duplicate)
         await db
           .update(sheetItems)
           .set({
@@ -101,18 +119,18 @@ export async function syncSheetItems(
             status: status as any,
             rawStatus: row.status,
             comments: row.comments,
+            sourceRowNumber: rowNumber,
+            sourceRowFingerprint: fingerprint,
             lastSeenAt: now,
             lastSyncedAt: now,
             needsOwnerMapping,
-            isOverdue,
-            isAtRisk,
             updatedAt: now,
           })
           .where(eq(sheetItems.id, existing.id));
 
         result.updated++;
       } else {
-        // Add new item
+        // New item
         await db.insert(sheetItems).values({
           commitment: row.commitment,
           ownerLabel,
@@ -121,25 +139,28 @@ export async function syncSheetItems(
           status: status as any,
           rawStatus: row.status,
           comments: row.comments,
+          sourceRowNumber: rowNumber,
           sourceRowFingerprint: fingerprint,
           firstSeenAt: now,
           lastSeenAt: now,
           lastSyncedAt: now,
           needsOwnerMapping,
-          isOverdue,
-          isAtRisk,
+          isOverdue: false,
+          isAtRisk: false,
         });
 
         result.added++;
       }
     }
 
-    // Mark items that disappeared from the sheet (optional: we keep them but stop updating lastSeenAt)
-    result.unchanged = existingItems.filter(
+    // Mark items that disappeared from the sheet
+    const disappeared = existingItems.filter(
       (item) =>
-        !seenFingerprints.has(item.sourceRowFingerprint) &&
-        item.status !== "done"
-    ).length;
+        item.status !== "done" &&
+        item.sourceRowNumber != null &&
+        !seenRowNumbers.has(item.sourceRowNumber)
+    );
+    result.disappeared = disappeared.length;
 
     result.success = true;
   } catch (error) {
@@ -155,12 +176,10 @@ export async function syncSheetItems(
 export async function getSheetItems(options?: {
   status?: string;
   needsOwnerMapping?: boolean;
-  isOverdue?: boolean;
   ownerEmail?: string | null;
 }) {
   let query = db.select().from(sheetItems);
 
-  // Apply filters using where clauses
   const conditions = [];
 
   if (options?.status) {
@@ -168,11 +187,9 @@ export async function getSheetItems(options?: {
   }
 
   if (options?.needsOwnerMapping !== undefined) {
-    conditions.push(eq(sheetItems.needsOwnerMapping, options.needsOwnerMapping));
-  }
-
-  if (options?.isOverdue !== undefined) {
-    conditions.push(eq(sheetItems.isOverdue, options.isOverdue));
+    conditions.push(
+      eq(sheetItems.needsOwnerMapping, options.needsOwnerMapping)
+    );
   }
 
   if (options?.ownerEmail !== undefined) {
@@ -191,7 +208,6 @@ export async function getSheetItems(options?: {
 }
 
 export async function getWaitingOnOthers(userEmail: string) {
-  // Items where the owner is not the user and status is not done
   return db
     .select()
     .from(sheetItems)

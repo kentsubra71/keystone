@@ -3,14 +3,13 @@ import { auth } from "@/lib/auth";
 import { syncSheetItems } from "@/lib/services/sheet-sync";
 
 export async function POST(request: NextRequest) {
-  // Check auth
   const session = await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const result = await syncSheetItems(session.accessToken);
+    const result = await syncSheetItems(session.accessToken || undefined);
 
     if (!result.success) {
       return NextResponse.json(
@@ -20,10 +19,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      message: "Sync completed",
+      message: "Sheet sync completed",
       added: result.added,
       updated: result.updated,
       unchanged: result.unchanged,
+      disappeared: result.disappeared,
     });
   } catch (error) {
     console.error("Sheet sync API error:", error);

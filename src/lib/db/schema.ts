@@ -7,6 +7,7 @@ import {
   pgEnum,
   jsonb,
   uuid,
+  index,
 } from "drizzle-orm/pg-core";
 
 // ============================================================================
@@ -88,6 +89,7 @@ export const sheetItems = pgTable("sheet_items", {
   comments: text("comments"),
 
   // Sync tracking (per contract Section 5.3)
+  sourceRowNumber: integer("source_row_number"),
   sourceRowFingerprint: text("source_row_fingerprint").notNull(),
   firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
   lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
@@ -100,7 +102,12 @@ export const sheetItems = pgTable("sheet_items", {
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_sheet_items_status").on(table.status),
+  index("idx_sheet_items_owner_email").on(table.ownerEmail),
+  index("idx_sheet_items_fingerprint").on(table.sourceRowFingerprint),
+  index("idx_sheet_items_row_number").on(table.sourceRowNumber),
+]);
 
 // Gmail threads (per contract Section 5.1)
 export const gmailThreads = pgTable("gmail_threads", {
@@ -155,7 +162,11 @@ export const dueFromMeItems = pgTable("due_from_me_items", {
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_due_items_source_id").on(table.sourceId),
+  index("idx_due_items_status").on(table.status),
+  index("idx_due_items_source").on(table.source),
+]);
 
 // User actions (for learning - per contract Section 7)
 export const userActions = pgTable("user_actions", {
@@ -166,7 +177,9 @@ export const userActions = pgTable("user_actions", {
   previousValue: text("previous_value"),
   newValue: text("new_value"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_user_actions_item_id").on(table.itemId),
+]);
 
 // Daily briefs (per contract Section 4.2)
 export const dailyBriefs = pgTable("daily_briefs", {
@@ -185,7 +198,9 @@ export const nudges = pgTable("nudges", {
   sentAt: timestamp("sent_at"),
   dismissedAt: timestamp("dismissed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_nudges_item_id").on(table.itemId),
+]);
 
 // App settings
 export const appSettings = pgTable("app_settings", {
