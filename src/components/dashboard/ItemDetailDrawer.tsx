@@ -46,7 +46,10 @@ export function ItemDetailDrawer({ item, onClose, onAction }: ItemDetailDrawerPr
   const [isLoadingThread, setIsLoadingThread] = useState(true);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [polishedText, setPolishedText] = useState<string | null>(null);
+  const [isPolishing, setIsPolishing] = useState(false);
   const [isCreatingDraft, setIsCreatingDraft] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const [showSnoozePicker, setShowSnoozePicker] = useState(false);
 
@@ -107,6 +110,62 @@ export function ItemDetailDrawer({ item, onClose, onAction }: ItemDetailDrawerPr
       setDraftStatus("Failed to create draft");
     } finally {
       setIsCreatingDraft(false);
+    }
+  }
+
+  async function handlePolish() {
+    if (!replyText.trim()) return;
+    setIsPolishing(true);
+    setDraftStatus(null);
+
+    try {
+      const res = await fetch("/api/emails/polish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId: item.sourceId, transcript: replyText.trim() }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setPolishedText(data.polished);
+      } else {
+        setDraftStatus("Failed to polish text");
+      }
+    } catch {
+      setDraftStatus("Failed to polish text");
+    } finally {
+      setIsPolishing(false);
+    }
+  }
+
+  async function handleConfirmSend() {
+    if (!polishedText) return;
+    setIsSending(true);
+    setDraftStatus("Sending...");
+
+    try {
+      const res = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadId: item.sourceId,
+          transcript: replyText.trim(),
+          polishedBody: polishedText,
+        }),
+      });
+
+      if (res.ok) {
+        setDraftStatus("Reply sent!");
+        setReplyText("");
+        setPolishedText(null);
+      } else {
+        const data = await res.json();
+        setDraftStatus(data.error || "Failed to send reply");
+      }
+    } catch {
+      setDraftStatus("Failed to send reply");
+    } finally {
+      setIsSending(false);
     }
   }
 
@@ -210,28 +269,73 @@ export function ItemDetailDrawer({ item, onClose, onAction }: ItemDetailDrawerPr
               <h3 className="text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider mb-3">
                 Quick Reply
               </h3>
+
+              {/* Step 1: Type your reply */}
               <textarea
                 value={replyText}
                 onChange={(e) => {
                   setReplyText(e.target.value);
                   setDraftStatus(null);
+                  setPolishedText(null);
                 }}
-                placeholder="Type your reply... GPT will polish it into a professional email draft."
+                placeholder="Type your reply... GPT will polish it into a professional email."
                 className="w-full p-3 text-sm border border-gray-200 dark:border-gray-700/40 rounded-xl bg-surface-card text-gray-900 dark:text-white placeholder-gray-500 resize-none focus:ring-2 focus:ring-brand-500/50 focus:border-transparent transition-all"
                 rows={3}
               />
+
+              {/* Step 2: Preview polished text */}
+              {polishedText && (
+                <div className="mt-3 p-3 rounded-xl border border-brand-500/30 bg-brand-500/5">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <svg className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+                    </svg>
+                    <span className="text-xs font-medium text-brand-700 dark:text-brand-300">GPT-polished preview</span>
+                  </div>
+                  <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{polishedText}</p>
+                </div>
+              )}
+
+              {/* Action buttons */}
               <div className="flex items-center gap-3 mt-2">
-                <button
-                  onClick={handleCreateDraft}
-                  disabled={!replyText.trim() || isCreatingDraft}
-                  className="px-4 py-2 text-xs font-medium rounded-lg bg-gradient-brand text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  {isCreatingDraft ? "Creating..." : "Create Draft"}
-                </button>
-                <span className="text-xs text-gray-600 dark:text-gray-400">Draft will appear in Gmail</span>
+                {polishedText ? (
+                  <>
+                    <button
+                      onClick={handleConfirmSend}
+                      disabled={isSending}
+                      className="px-4 py-2 text-xs font-medium rounded-lg bg-gradient-brand text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {isSending ? "Sending..." : "Confirm & Send"}
+                    </button>
+                    <button
+                      onClick={() => setPolishedText(null)}
+                      className="px-4 py-2 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={handlePolish}
+                      disabled={!replyText.trim() || isPolishing || isCreatingDraft}
+                      className="px-4 py-2 text-xs font-medium rounded-lg bg-gradient-brand text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {isPolishing ? "Polishing..." : "Send Reply"}
+                    </button>
+                    <button
+                      onClick={handleCreateDraft}
+                      disabled={!replyText.trim() || isCreatingDraft || isPolishing}
+                      className="px-4 py-2 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {isCreatingDraft ? "Creating..." : "Save Draft"}
+                    </button>
+                  </>
+                )}
               </div>
+
               {draftStatus && (
-                <p className={`text-xs mt-2 ${draftStatus.includes("created") ? "text-emerald-800 dark:text-emerald-400" : "text-gray-600 dark:text-gray-300"}`}>
+                <p className={`text-xs mt-2 ${draftStatus.includes("sent") || draftStatus.includes("created") ? "text-emerald-800 dark:text-emerald-400" : draftStatus.includes("Failed") ? "text-rose-700 dark:text-rose-400" : "text-gray-600 dark:text-gray-300"}`}>
                   {draftStatus}
                 </p>
               )}

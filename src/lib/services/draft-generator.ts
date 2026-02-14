@@ -64,35 +64,35 @@ export async function generateDraftBody(input: DraftInput): Promise<string> {
     .replace(/(^|[.!?]\s+)([a-z])/g, (_, prefix, char) => prefix + char.toUpperCase());
 }
 
-export async function createGmailDraft(
-  gmail: gmail_v1.Gmail,
-  input: DraftInput
-): Promise<string> {
-  const body = await generateDraftBody(input);
-
-  // Build the email message
+function buildRawMessage(input: DraftInput, body: string): string {
   const to = input.to.join(", ");
   const cc = input.cc.length > 0 ? input.cc.join(", ") : "";
 
   const messageParts = [
     `To: ${to}`,
-    cc ? `Cc: ${cc}` : "",
-    `Subject: Re: ${input.subject.replace(/^(Re:\s*)+/i, "Re: ")}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
+    `Subject: Re: ${input.subject.replace(/^(Re:\s*)+/i, "")}`,
     "Content-Type: text/plain; charset=utf-8",
     "",
     body,
-  ].filter(Boolean);
+  ];
 
   const message = messageParts.join("\r\n");
 
-  // Base64url encode the message
-  const encodedMessage = Buffer.from(message)
+  return Buffer.from(message)
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
+}
 
-  // Create the draft in Gmail
+export async function createGmailDraft(
+  gmail: gmail_v1.Gmail,
+  input: DraftInput
+): Promise<string> {
+  const body = await generateDraftBody(input);
+  const encodedMessage = buildRawMessage(input, body);
+
   const draft = await gmail.users.drafts.create({
     userId: "me",
     requestBody: {
@@ -104,4 +104,23 @@ export async function createGmailDraft(
   });
 
   return draft.data.id || "";
+}
+
+export async function sendGmailReply(
+  gmail: gmail_v1.Gmail,
+  input: DraftInput,
+  prePolishedBody?: string,
+): Promise<string> {
+  const body = prePolishedBody || (await generateDraftBody(input));
+  const encodedMessage = buildRawMessage(input, body);
+
+  const sent = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: {
+      raw: encodedMessage,
+      threadId: input.threadId,
+    },
+  });
+
+  return sent.data.id || "";
 }

@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { DueFromMeSection } from "@/components/dashboard/DueFromMeSection";
-import { WaitingOnSection } from "@/components/dashboard/WaitingOnSection";
+import { TodayContent } from "@/components/dashboard/TodayContent";
 
 export default async function TodayPage() {
   const session = await auth();
@@ -25,10 +24,7 @@ export default async function TodayPage() {
       </header>
 
       <div className="max-w-5xl px-8 py-8">
-        <div className="space-y-10">
-          <DueFromMeSection />
-          <WaitingOnSection />
-        </div>
+        <TodayContent />
       </div>
     </main>
   );

@@ -5,6 +5,7 @@ import { ItemCard } from "./ItemCard";
 import { ItemDetailDrawer } from "./ItemDetailDrawer";
 import { Toast } from "@/components/ui/Toast";
 import type { DueFromMeItem } from "@/types";
+import type { EnrichedMeeting } from "@/app/api/meetings/upcoming/route";
 
 type PendingAction = {
   itemId: string;
@@ -13,7 +14,11 @@ type PendingAction = {
   timeoutId: ReturnType<typeof setTimeout>;
 };
 
-export function DueFromMeSection() {
+type DueFromMeSectionProps = {
+  meetings?: EnrichedMeeting[];
+};
+
+export function DueFromMeSection({ meetings }: DueFromMeSectionProps) {
   const [items, setItems] = useState<DueFromMeItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -121,6 +126,7 @@ export function DueFromMeSection() {
             <ItemCard
               key={item.id}
               item={item}
+              meetings={meetings}
               onSelect={setSelectedItem}
               onAction={handleActionWithUndo}
             />

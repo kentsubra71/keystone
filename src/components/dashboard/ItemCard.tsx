@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { MeetingBadge } from "./MeetingBadge";
 import type { DueFromMeItem } from "@/types";
+import type { EnrichedMeeting } from "@/app/api/meetings/upcoming/route";
 
 type ItemCardProps = {
   item: DueFromMeItem;
   showBlockedPerson?: boolean;
   showOwner?: boolean;
+  meetings?: EnrichedMeeting[];
   onSelect?: (item: DueFromMeItem) => void;
   onAction?: (itemId: string, action: "done" | "snooze" | "ignore", snoozeDays?: number) => void;
   onActionComplete?: () => void;
@@ -33,7 +36,7 @@ const typeLabels = {
   follow_up: "Follow-up",
 };
 
-export function ItemCard({ item, showBlockedPerson, showOwner, onSelect, onAction, onActionComplete }: ItemCardProps) {
+export function ItemCard({ item, showBlockedPerson, showOwner, meetings, onSelect, onAction, onActionComplete }: ItemCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showSnoozePicker, setShowSnoozePicker] = useState(false);
 
@@ -85,6 +88,7 @@ export function ItemCard({ item, showBlockedPerson, showOwner, onSelect, onActio
             <span className="text-xs text-gray-600 dark:text-gray-300">
               {item.agingDays}d ago
             </span>
+            {meetings && <MeetingBadge meetings={meetings} itemId={item.id} />}
           </div>
 
           <h3 className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">

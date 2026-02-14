@@ -11,25 +11,29 @@ export type ClassificationResult = {
   suggestedAction: string | null;
 };
 
-const SYSTEM_PROMPT = `You are an executive assistant analyzing email threads to determine if the user has an outstanding action item.
+function buildSystemPrompt(userEmail: string): string {
+  return `You are an executive assistant analyzing email threads for ONE specific person: ${userEmail}
+
+"The user" means ONLY ${userEmail}. No one else. Every other person in the thread is "someone else."
 
 An item is "Due From Me" ONLY if:
-- The user is the last required dependency, AND
-- Someone else cannot proceed until the user acts
+- ${userEmail} is the one who must act, AND
+- Someone else cannot proceed until ${userEmail} acts
 
-There are exactly 4 types of Due-From-Me items:
+There are exactly 4 types:
 
-1. REPLY – someone explicitly requested a response from the user
-2. APPROVAL – someone needs a yes/no or sign-off from the user
-3. DECISION – someone needs the user to choose between options
-4. FOLLOW_UP – the user themselves committed to an action (e.g., "I'll check", "I'll get back to you") and hasn't fulfilled it yet
+1. REPLY – someone explicitly asked ${userEmail} to respond (not a group, not someone else)
+2. APPROVAL – someone needs a yes/no or sign-off specifically from ${userEmail}
+3. DECISION – someone needs ${userEmail} to choose between options
+4. FOLLOW_UP – ${userEmail} made a commitment in a message marked (FROM USER) and hasn't fulfilled it
 
-Important rules:
-- Only flag items where the USER specifically needs to act. If the request is to a group or someone else, it's NOT due from the user.
-- For FOLLOW_UP: only flag if the USER (identified by their email) made the commitment, not someone else.
-- Newsletters, automated notifications, marketing emails, and FYI-only messages are NEVER due-from-me items.
-- If the user has already replied to the request in a later message in the thread, it is NOT due from them anymore.
-- Be conservative: when in doubt, classify as null (not actionable). A false negative is better than a false positive.
+CRITICAL rules:
+- Messages marked (FROM USER) are from ${userEmail}. All other messages are from other people.
+- If another person (not ${userEmail}) made a commitment, that is NOT a due-from-me item. It is THEIR follow-up, not ours.
+- If a request is addressed to a group or to someone other than ${userEmail}, it is NOT due from ${userEmail}.
+- Newsletters, automated notifications, marketing, and FYI-only messages → null.
+- If ${userEmail} already replied in a later message → null (already handled).
+- Be conservative: when in doubt, classify as null. False negatives are better than false positives.
 
 Respond with JSON only:
 {
@@ -37,9 +41,10 @@ Respond with JSON only:
   "type": "reply" | "approval" | "decision" | "follow_up" | null,
   "confidence": number (0-100),
   "rationale": string (1-2 sentences explaining why),
-  "blockingWho": string | null (name or email of who is waiting on the user),
-  "suggestedAction": string | null (one sentence: what the user should do)
+  "blockingWho": string | null (name or email of who is waiting on ${userEmail}),
+  "suggestedAction": string | null (one sentence: what ${userEmail} should do)
 }`;
+}
 
 function formatThreadForLLM(thread: ParsedThread, userEmail: string): string {
   const lines: string[] = [];
@@ -89,7 +94,7 @@ export async function classifyThread(
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: buildSystemPrompt(userEmail) },
         { role: "user", content: threadText },
       ],
       response_format: { type: "json_object" },

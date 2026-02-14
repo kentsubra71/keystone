@@ -5,6 +5,7 @@ import { ItemCard } from "./ItemCard";
 import { ItemDetailDrawer } from "./ItemDetailDrawer";
 import { Toast } from "@/components/ui/Toast";
 import type { DueFromMeItem } from "@/types";
+import type { EnrichedMeeting } from "@/app/api/meetings/upcoming/route";
 
 type PendingAction = {
   itemId: string;
@@ -13,7 +14,11 @@ type PendingAction = {
   timeoutId: ReturnType<typeof setTimeout>;
 };
 
-export function BlockingOthersSection() {
+type BlockingOthersSectionProps = {
+  meetings?: EnrichedMeeting[];
+};
+
+export function BlockingOthersSection({ meetings }: BlockingOthersSectionProps) {
   const [items, setItems] = useState<DueFromMeItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -124,6 +129,7 @@ export function BlockingOthersSection() {
               key={item.id}
               item={item}
               showBlockedPerson
+              meetings={meetings}
               onSelect={setSelectedItem}
               onAction={handleActionWithUndo}
             />
