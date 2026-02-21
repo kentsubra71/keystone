@@ -13,8 +13,10 @@ export const SheetRowSchema = z.object({
 
 export type SheetRow = z.infer<typeof SheetRowSchema>;
 
+type CanonicalStatus = "not_started" | "in_progress" | "blocked" | "done" | "deferred";
+
 // Status mapping from free-text to canonical statuses
-const STATUS_MAPPINGS: Record<string, string> = {
+const STATUS_MAPPINGS: Record<string, CanonicalStatus> = {
   // Not Started variants
   "not started": "not_started",
   "new": "not_started",
@@ -54,7 +56,7 @@ const STATUS_MAPPINGS: Record<string, string> = {
 };
 
 export function normalizeStatus(rawStatus: string | null | undefined): {
-  status: string;
+  status: CanonicalStatus;
   needsReview: boolean;
 } {
   if (!rawStatus) {

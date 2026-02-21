@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { dueFromMeItems } from "@/lib/db/schema";
-import { eq, and, sql, ne } from "drizzle-orm";
+import { and, sql, ne, or } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   const session = await auth();
@@ -31,11 +31,21 @@ export async function GET(request: NextRequest) {
       rationale: dueFromMeItems.rationale,
       suggestedAction: dueFromMeItems.suggestedAction,
       notes: dueFromMeItems.notes,
+      snoozedUntil: dueFromMeItems.snoozedUntil,
       createdAt: dueFromMeItems.createdAt,
       // Dynamic aging: compute from first_seen_at instead of using stored value
       agingDays: sql<number>`EXTRACT(DAY FROM NOW() - ${dueFromMeItems.firstSeenAt})::int`.as("aging_days"),
       daysInCurrentStatus: sql<number>`EXTRACT(DAY FROM NOW() - ${dueFromMeItems.statusChangedAt})::int`.as("days_in_current_status"),
     };
+
+    // Items are "active" if not done AND (not deferred OR snooze has expired)
+    const activeCondition = and(
+      ne(dueFromMeItems.status, "done"),
+      or(
+        ne(dueFromMeItems.status, "deferred"),
+        sql`${dueFromMeItems.snoozedUntil} < NOW()`
+      )
+    );
 
     let items;
 
@@ -46,20 +56,14 @@ export async function GET(request: NextRequest) {
         .where(
           and(
             sql`${dueFromMeItems.blockingWho} IS NOT NULL`,
-            ne(dueFromMeItems.status, "done"),
-            ne(dueFromMeItems.status, "deferred")
+            activeCondition
           )
         );
     } else if (filter === "due") {
       items = await db
         .select(selectFields)
         .from(dueFromMeItems)
-        .where(
-          and(
-            ne(dueFromMeItems.status, "done"),
-            ne(dueFromMeItems.status, "deferred")
-          )
-        );
+        .where(activeCondition);
     } else {
       items = await db.select(selectFields).from(dueFromMeItems);
     }

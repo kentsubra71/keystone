@@ -1,7 +1,17 @@
 import OpenAI from "openai";
+import { z } from "zod";
 import type { DueFromMeType } from "@/types";
 import type { ParsedThread } from "@/lib/google/gmail";
 import { extractEmailAddress } from "@/lib/google/gmail";
+
+const ClassificationSchema = z.object({
+  isDueFromMe: z.boolean(),
+  type: z.enum(["reply", "approval", "decision", "follow_up"]).nullable(),
+  confidence: z.number().min(0).max(100),
+  rationale: z.string(),
+  blockingWho: z.string().nullable(),
+  suggestedAction: z.string().nullable(),
+});
 
 export type ClassificationResult = {
   type: DueFromMeType | null;
@@ -107,23 +117,31 @@ export async function classifyThread(
       return { type: null, confidence: 0, rationale: "Empty LLM response", blockingWho: null, suggestedAction: null };
     }
 
-    const parsed = JSON.parse(content);
+    const raw = JSON.parse(content);
+    const validated = ClassificationSchema.safeParse(raw);
+
+    if (!validated.success) {
+      console.warn(`LLM response failed schema validation for thread ${thread.threadId}:`, validated.error.issues);
+      return classifyThreadFallback(thread, userEmail);
+    }
+
+    const parsed = validated.data;
 
     if (!parsed.isDueFromMe || !parsed.type) {
       return {
         type: null,
-        confidence: parsed.confidence ?? 0,
-        rationale: parsed.rationale ?? "Not a Due-From-Me item",
+        confidence: parsed.confidence,
+        rationale: parsed.rationale || "Not a Due-From-Me item",
         blockingWho: null,
         suggestedAction: null,
       };
     }
 
     return {
-      type: parsed.type as DueFromMeType,
-      confidence: Math.min(100, Math.max(0, parsed.confidence ?? 50)),
-      rationale: parsed.rationale ?? "Classified by AI",
-      blockingWho: parsed.blockingWho ?? null,
+      type: parsed.type,
+      confidence: parsed.confidence,
+      rationale: parsed.rationale || "Classified by AI",
+      blockingWho: parsed.blockingWho,
       suggestedAction: parsed.suggestedAction ?? getSuggestedAction(parsed.type),
     };
   } catch (error) {

@@ -6,6 +6,7 @@ import type { EnrichedMeeting } from "@/app/api/meetings/upcoming/route";
 type MeetingBriefingSectionProps = {
   meetings: EnrichedMeeting[];
   isLoading?: boolean;
+  error?: boolean;
 };
 
 function formatRelativeTime(startIso: string): string {
@@ -48,7 +49,7 @@ function meetingHasContext(meeting: EnrichedMeeting): boolean {
   ) || !!meeting.description;
 }
 
-export function MeetingBriefingSection({ meetings, isLoading }: MeetingBriefingSectionProps) {
+export function MeetingBriefingSection({ meetings, isLoading, error }: MeetingBriefingSectionProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   // Auto-expand meetings with context when data arrives
@@ -59,6 +60,23 @@ export function MeetingBriefingSection({ meetings, isLoading }: MeetingBriefingS
   }, [meetings]);
 
   if (isLoading) return null;
+
+  if (error) {
+    return (
+      <section className="mb-10">
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Meetings Coming Up
+          </h2>
+        </div>
+        <div className="bg-surface-card rounded-xl border border-gray-200 dark:border-gray-700/40 p-8 text-center">
+          <p className="text-gray-600 dark:text-gray-300">
+            Could not load meetings
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   if (meetings.length === 0) {
     return (

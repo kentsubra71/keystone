@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { appSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -9,7 +10,36 @@ type StoredTokens = {
   userEmail: string;
 };
 
+// --- Fix 1: Timing-safe cron secret verification ---
+
+export function verifyCronSecret(request: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false; // unset secret = reject all requests
+
+  const authHeader = request.headers.get("authorization") ?? "";
+  const expected = Buffer.from(`Bearer ${secret}`);
+  const actual = Buffer.from(authHeader);
+
+  if (actual.length !== expected.length) return false;
+  return crypto.timingSafeEqual(actual, expected);
+}
+
+// --- Fix 2: In-memory mutex for token refresh ---
+
+let refreshLock: Promise<{ accessToken: string; userEmail: string }> | null = null;
+
 export async function refreshStoredToken(): Promise<{
+  accessToken: string;
+  userEmail: string;
+}> {
+  if (refreshLock) return refreshLock;
+  refreshLock = doRefreshToken().finally(() => {
+    refreshLock = null;
+  });
+  return refreshLock;
+}
+
+async function doRefreshToken(): Promise<{
   accessToken: string;
   userEmail: string;
 }> {

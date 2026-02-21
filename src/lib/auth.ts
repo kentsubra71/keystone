@@ -47,11 +47,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: { label: "Email", type: "email" },
           },
           async authorize(credentials) {
-            // In mock mode, accept any email
             const email =
               (credentials?.email as string) ||
               process.env.ALLOWED_USER_EMAIL ||
               "dev@localhost";
+
+            // Enforce allowlist even in mock mode
+            const allowed = process.env.ALLOWED_USER_EMAIL;
+            if (allowed && email.toLowerCase() !== allowed.toLowerCase()) {
+              return null;
+            }
+
             return {
               id: "mock-user-id",
               email,

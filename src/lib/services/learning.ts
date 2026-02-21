@@ -66,11 +66,15 @@ export async function snoozeItem(itemId: string, days: number): Promise<void> {
     `${days} days`
   );
 
-  // Update the item status to deferred
+  // Update the item status to deferred with snooze expiry
+  const snoozedUntil = new Date();
+  snoozedUntil.setDate(snoozedUntil.getDate() + days);
+
   await db
     .update(dueFromMeItems)
     .set({
       status: "deferred",
+      snoozedUntil,
       statusChangedAt: new Date(),
       updatedAt: new Date(),
     })

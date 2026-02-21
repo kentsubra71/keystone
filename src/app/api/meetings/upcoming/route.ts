@@ -43,10 +43,11 @@ export async function GET() {
 
     const userEmail = session.user?.email?.toLowerCase() || "";
 
-    // Collect all unique attendee emails (excluding the user)
+    // Collect all unique attendee emails (excluding the user and empty strings)
     const allAttendeeEmails = new Set<string>();
     for (const meeting of rawMeetings) {
       for (const email of meeting.attendees) {
+        if (!email) continue;
         if (email.toLowerCase() !== userEmail) {
           allAttendeeEmails.add(email.toLowerCase());
         }
@@ -176,6 +177,9 @@ export async function GET() {
     return NextResponse.json({ meetings: enriched });
   } catch (error) {
     console.error("[meetings/upcoming] Failed to fetch upcoming meetings:", error);
-    return NextResponse.json({ meetings: [] });
+    return NextResponse.json(
+      { error: "Failed to fetch meetings" },
+      { status: 500 }
+    );
   }
 }

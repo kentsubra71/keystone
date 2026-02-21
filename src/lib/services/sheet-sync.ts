@@ -116,7 +116,7 @@ export async function syncSheetItems(
             ownerLabel,
             ownerEmail,
             dueDate,
-            status: status as any,
+            status,
             rawStatus: row.status,
             comments: row.comments,
             sourceRowNumber: rowNumber,
@@ -136,7 +136,7 @@ export async function syncSheetItems(
           ownerLabel,
           ownerEmail,
           dueDate,
-          status: status as any,
+          status,
           rawStatus: row.status,
           comments: row.comments,
           sourceRowNumber: rowNumber,
@@ -183,7 +183,7 @@ export async function getSheetItems(options?: {
   const conditions = [];
 
   if (options?.status) {
-    conditions.push(eq(sheetItems.status, options.status as any));
+    conditions.push(sql`${sheetItems.status} = ${options.status}`);
   }
 
   if (options?.needsOwnerMapping !== undefined) {
@@ -201,7 +201,7 @@ export async function getSheetItems(options?: {
   }
 
   if (conditions.length > 0) {
-    query = query.where(and(...conditions)) as any;
+    return db.select().from(sheetItems).where(and(...conditions));
   }
 
   return query;

@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         and(
           sql`${sheetItems.ownerEmail} IS NOT NULL`,
           sql`LOWER(${sheetItems.ownerEmail}) != LOWER(${userEmail})`,
-          ne(sheetItems.status, "done" as any)
+          sql`${sheetItems.status} != 'done'`
         )
       );
 

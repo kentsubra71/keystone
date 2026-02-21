@@ -160,6 +160,9 @@ export const dueFromMeItems = pgTable("due_from_me_items", {
   // Internal notes (stored in Keystone, not written back)
   notes: text("notes"),
 
+  // Snooze expiry: item resurfaces when now() > snoozedUntil
+  snoozedUntil: timestamp("snoozed_until"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
