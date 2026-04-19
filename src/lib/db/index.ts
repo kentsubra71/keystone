@@ -1,25 +1,29 @@
-import { neon, NeonQueryFunction } from "@neondatabase/serverless";
-import { drizzle, NeonHttpDatabase } from "drizzle-orm/neon-http";
+import { neon } from "@neondatabase/serverless";
+import { drizzle as drizzleHttp } from "drizzle-orm/neon-http";
+import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import * as schema from "./schema";
 
-// Handle missing DATABASE_URL gracefully during build
-const getDatabaseUrl = () => {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    // Return a placeholder for build time - actual operations will fail at runtime
-    console.warn("DATABASE_URL not set - database operations will fail");
-    return "postgresql://placeholder:placeholder@placeholder/placeholder";
+const testUrl = process.env.TEST_DB_URL;
+
+function buildDb() {
+  if (testUrl) {
+    const pool = new Pool({ connectionString: testUrl });
+    return drizzlePg(pool, { schema });
   }
-  return url;
-};
+  const prodUrl = process.env.DATABASE_URL;
+  if (!prodUrl) {
+    console.warn("DATABASE_URL not set - database operations will fail");
+    const sql = neon("postgresql://placeholder:placeholder@placeholder/placeholder");
+    return drizzleHttp(sql, { schema });
+  }
+  const sql = neon(prodUrl);
+  return drizzleHttp(sql, { schema });
+}
 
-const sql = neon(getDatabaseUrl());
-
-export const db = drizzle(sql, { schema });
-
+export const db = buildDb();
 export type Database = typeof db;
 
-// Helper to check if database is configured
 export function isDatabaseConfigured(): boolean {
-  return !!process.env.DATABASE_URL;
+  return !!(process.env.DATABASE_URL || process.env.TEST_DB_URL);
 }
