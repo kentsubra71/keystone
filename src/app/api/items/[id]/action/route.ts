@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { markItemDone, snoozeItem, ignoreItem } from "@/lib/services/learning";
+import { ItemNotFoundError } from "@/lib/errors";
+import { logError } from "@/lib/logger";
 import { z } from "zod";
 
-const ActionSchema = z.object({
-  action: z.enum(["done", "snooze", "ignore"]),
-  snoozeDays: z.number().optional(),
-});
+const ActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("done") }),
+  z.object({ action: z.literal("ignore") }),
+  z.object({ action: z.literal("snooze"), snoozedUntil: z.string().datetime() }),
+]);
 
 type RouteParams = {
   params: Promise<{ id: string }>;
@@ -18,35 +21,39 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { id } = await params;
+  let body: unknown;
   try {
-    const { id } = await params;
-    const body = await request.json();
-    const parsed = ActionSchema.safeParse(body);
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const parsed = ActionSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
+  }
 
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
-    }
-
-    const { action, snoozeDays } = parsed.data;
-
-    switch (action) {
+  try {
+    switch (parsed.data.action) {
       case "done":
         await markItemDone(id);
         break;
       case "snooze":
-        await snoozeItem(id, snoozeDays || 1);
+        await snoozeItem(id, new Date(parsed.data.snoozedUntil));
         break;
       case "ignore":
         await ignoreItem(id);
         break;
     }
-
-    return NextResponse.json({ success: true, action });
+    return NextResponse.json({ success: true, action: parsed.data.action });
   } catch (error) {
-    console.error("Item action error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    if (error instanceof ItemNotFoundError) {
+      return NextResponse.json(
+        { error: "item_not_found", itemId: error.itemId },
+        { status: 404 }
+      );
+    }
+    logError("item_action_failed", error, { itemId: id, action: parsed.data.action });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
