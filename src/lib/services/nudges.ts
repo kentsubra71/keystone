@@ -44,6 +44,7 @@ export async function generateNudges(): Promise<NudgeResult[]> {
       and(
         sql`${dueFromMeItems.blockingWho} IS NOT NULL`,
         ne(dueFromMeItems.status, "done"),
+        ne(dueFromMeItems.status, "deferred"),
         sql`${dueFromMeItems.agingDays} >= 1`
       )
     )
@@ -84,6 +85,7 @@ export async function generateNudges(): Promise<NudgeResult[]> {
       .where(
         and(
           ne(dueFromMeItems.status, "done"),
+          ne(dueFromMeItems.status, "deferred"),
           sql`${dueFromMeItems.agingDays} >= 3`,
           sql`${dueFromMeItems.type} IN ('reply', 'approval')`
         )
