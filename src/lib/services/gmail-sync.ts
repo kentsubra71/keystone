@@ -3,6 +3,8 @@ import { gmailThreads, dueFromMeItems } from "@/lib/db/schema";
 import { getGmailClient, fetchRecentThreads, extractEmailAddress } from "@/lib/google/gmail";
 import type { ParsedThread } from "@/lib/google/gmail";
 import { classifyThreads, getSuggestedAction } from "./gmail-classifier";
+import { resurfaceItem } from "./resurface";
+import { logError } from "@/lib/logger";
 import { eq, inArray } from "drizzle-orm";
 
 export type GmailSyncResult = {
@@ -12,31 +14,26 @@ export type GmailSyncResult = {
   threadsSkipped: number;
   dueItemsCreated: number;
   dueItemsUpdated: number;
+  dueItemsResurfaced: number;
   errors: string[];
 };
 
-/**
- * Filter out threads that shouldn't be classified:
- * - Mailing lists (detected by List-Unsubscribe / List-Id headers)
- * - Promotional / forum categories
- * - Threads where user is not in TO (only CC'd)
- */
 function shouldProcessThread(thread: ParsedThread, userEmail: string): boolean {
-  // Skip mailing list threads (detected by RFC 2369 headers)
   if (thread.isMailingList) return false;
-
-  // Skip promotional and forum categories
   const skipLabels = ["CATEGORY_PROMOTIONS", "CATEGORY_FORUMS", "CATEGORY_UPDATES", "SPAM", "TRASH"];
   if (thread.labels.some((l) => skipLabels.includes(l))) return false;
-
-  // Require user to be in TO of at least one message in the thread
   const userLower = userEmail.toLowerCase();
   const userIsInTo = thread.messages.some((msg) =>
     msg.to.some((addr) => addr.toLowerCase() === userLower)
   );
-  if (!userIsInTo) return false;
+  return userIsInTo;
+}
 
-  return true;
+function latestInboundMessage(thread: ParsedThread, userEmail: string) {
+  const userLower = userEmail.toLowerCase();
+  return [...thread.messages].reverse().find((m) =>
+    extractEmailAddress(m.from).toLowerCase() !== userLower
+  );
 }
 
 export async function syncGmailThreads(
@@ -50,6 +47,7 @@ export async function syncGmailThreads(
     threadsSkipped: 0,
     dueItemsCreated: 0,
     dueItemsUpdated: 0,
+    dueItemsResurfaced: 0,
     errors: [],
   };
 
@@ -58,7 +56,6 @@ export async function syncGmailThreads(
     const allThreads = await fetchRecentThreads(gmail, 500);
     result.threadsFetched = allThreads.length;
 
-    // Filter to actionable threads
     const threadsToProcess = allThreads.filter((t) => shouldProcessThread(t, userEmail));
     result.threadsSkipped = allThreads.length - threadsToProcess.length;
 
@@ -67,7 +64,6 @@ export async function syncGmailThreads(
       return result;
     }
 
-    // Batch lookup: which threads already exist in DB?
     const threadIds = threadsToProcess.map((t) => t.threadId);
     const existingThreadRows = await db
       .select({ threadId: gmailThreads.threadId })
@@ -75,45 +71,49 @@ export async function syncGmailThreads(
       .where(inArray(gmailThreads.threadId, threadIds));
     const existingThreadSet = new Set(existingThreadRows.map((r) => r.threadId));
 
-    // Batch lookup: which due-from-me items exist and what's their status?
     const existingDueItems = await db
       .select({
         sourceId: dueFromMeItems.sourceId,
         status: dueFromMeItems.status,
         id: dueFromMeItems.id,
+        statusChangedAt: dueFromMeItems.statusChangedAt,
       })
       .from(dueFromMeItems)
       .where(inArray(dueFromMeItems.sourceId, threadIds));
     const dueItemMap = new Map(existingDueItems.map((r) => [r.sourceId, r]));
 
-    // Don't reclassify threads the user already acted on
-    const actedOnSourceIds = new Set(
-      existingDueItems
-        .filter((r) => r.status === "done" || r.status === "deferred")
-        .map((r) => r.sourceId)
-    );
+    // Split: (a) threads with no prior action, (b) done/deferred threads with new inbound after statusChangedAt.
+    // Skip: done/deferred threads where no inbound message is newer than statusChangedAt.
+    const threadsNeedingClassification: ParsedThread[] = [];
+    for (const thread of threadsToProcess) {
+      const existing = dueItemMap.get(thread.threadId);
+      const wasActedOn = existing && (existing.status === "done" || existing.status === "deferred");
+      if (!wasActedOn) {
+        threadsNeedingClassification.push(thread);
+        continue;
+      }
+      const latest = latestInboundMessage(thread, userEmail);
+      if (!latest) continue; // no inbound at all — nothing to revive on
+      if (latest.receivedAt > existing.statusChangedAt) {
+        threadsNeedingClassification.push(thread);
+      }
+      // else: acted-on thread with no new inbound since action — skip.
+    }
 
-    const threadsNeedingClassification = threadsToProcess.filter(
-      (t) => !actedOnSourceIds.has(t.threadId)
-    );
-
-    // Classify all threads via GPT-4o-mini (batched, concurrent)
-    const classifications = await classifyThreads(threadsNeedingClassification, userEmail);
+    const classifications = threadsNeedingClassification.length > 0
+      ? await classifyThreads(threadsNeedingClassification, userEmail)
+      : new Map();
     result.threadsProcessed = threadsNeedingClassification.length;
 
     const now = new Date();
 
-    // Process each classified thread
     for (const thread of threadsNeedingClassification) {
       const classification = classifications.get(thread.threadId);
       if (!classification) continue;
 
       try {
-        // Get the first message's sender info for the thread record
-        const firstMsg = thread.messages[0];
         const lastMsg = thread.messages[thread.messages.length - 1];
 
-        // Upsert gmailThreads record
         if (existingThreadSet.has(thread.threadId)) {
           await db
             .update(gmailThreads)
@@ -150,68 +150,70 @@ export async function syncGmailThreads(
           });
         }
 
-        // If classified as Due-From-Me, create/update a DueFromMeItem
-        if (classification.type) {
-          const existingDue = dueItemMap.get(thread.threadId);
-          // Aging = time since the last INBOUND message (the triggering request),
-          // NOT the first message in the thread (which could be years old if someone
-          // revives an old conversation).
-          const userLowerForAging = userEmail.toLowerCase();
-          const lastInboundMsg = [...thread.messages].reverse().find((msg) => {
-            const fromAddr = extractEmailAddress(msg.from).toLowerCase();
-            return fromAddr !== userLowerForAging;
-          });
-          const requestDate = lastInboundMsg?.receivedAt || lastMsg?.receivedAt || now;
-          const agingDays = Math.floor(
-            (now.getTime() - requestDate.getTime()) / (1000 * 60 * 60 * 24)
-          );
+        if (!classification.type) continue; // ack/FYI case — no DFM item action
 
-          if (!existingDue) {
-            await db.insert(dueFromMeItems).values({
-              type: classification.type,
-              status: "not_started",
-              title: thread.subject,
-              source: "gmail",
-              sourceId: thread.threadId,
-              blockingWho: classification.blockingWho || (lastMsg ? extractEmailAddress(lastMsg.from) : null),
-              ownerEmail: userEmail, // The user owns the action, not the sender
+        const existing = dueItemMap.get(thread.threadId);
+        const latest = latestInboundMessage(thread, userEmail);
+        const requestDate = latest?.receivedAt || lastMsg?.receivedAt || now;
+
+        if (!existing) {
+          // Brand new
+          const agingDays = Math.floor((now.getTime() - requestDate.getTime()) / (1000 * 60 * 60 * 24));
+          await db.insert(dueFromMeItems).values({
+            type: classification.type,
+            status: "not_started",
+            title: thread.subject,
+            source: "gmail",
+            sourceId: thread.threadId,
+            blockingWho: classification.blockingWho || (lastMsg ? extractEmailAddress(lastMsg.from) : null),
+            ownerEmail: userEmail,
+            agingDays,
+            daysInCurrentStatus: 0,
+            firstSeenAt: requestDate,
+            lastSeenAt: now,
+            statusChangedAt: now,
+            confidenceScore: classification.confidence,
+            rationale: classification.rationale,
+            suggestedAction: classification.suggestedAction || getSuggestedAction(classification.type),
+          });
+          result.dueItemsCreated++;
+        } else if (existing.status === "done" || existing.status === "deferred") {
+          // Resurface
+          await resurfaceItem(existing.id, {
+            type: classification.type,
+            confidence: classification.confidence,
+            rationale: classification.rationale,
+            suggestedAction: classification.suggestedAction || getSuggestedAction(classification.type),
+            blockingWho: classification.blockingWho || (lastMsg ? extractEmailAddress(lastMsg.from) : null),
+          }, requestDate);
+          result.dueItemsResurfaced++;
+        } else {
+          // In-flight update
+          const agingDays = Math.floor((now.getTime() - requestDate.getTime()) / (1000 * 60 * 60 * 24));
+          await db
+            .update(dueFromMeItems)
+            .set({
               agingDays,
-              daysInCurrentStatus: 0,
-              firstSeenAt: requestDate,
               lastSeenAt: now,
-              statusChangedAt: now,
               confidenceScore: classification.confidence,
               rationale: classification.rationale,
-              suggestedAction: classification.suggestedAction || getSuggestedAction(classification.type),
-            });
-            result.dueItemsCreated++;
-          } else {
-            // Update existing item (don't change status — user may have set it)
-            await db
-              .update(dueFromMeItems)
-              .set({
-                agingDays,
-                lastSeenAt: now,
-                confidenceScore: classification.confidence,
-                rationale: classification.rationale,
-                blockingWho: classification.blockingWho || undefined,
-                suggestedAction: classification.suggestedAction || undefined,
-                updatedAt: now,
-              })
-              .where(eq(dueFromMeItems.id, existingDue.id));
-            result.dueItemsUpdated++;
-          }
+              blockingWho: classification.blockingWho || undefined,
+              suggestedAction: classification.suggestedAction || undefined,
+              updatedAt: now,
+            })
+            .where(eq(dueFromMeItems.id, existing.id));
+          result.dueItemsUpdated++;
         }
       } catch (threadError) {
         const msg = threadError instanceof Error ? threadError.message : String(threadError);
-        console.error(`Failed to process thread ${thread.threadId}:`, msg);
+        logError("thread_process_failed", threadError, { threadId: thread.threadId });
         result.errors.push(`Thread ${thread.threadId}: ${msg}`);
       }
     }
 
     result.success = true;
   } catch (error) {
-    console.error("Gmail sync error:", error);
+    logError("gmail_sync_failed", error);
     result.errors.push(error instanceof Error ? error.message : "Unknown error");
   }
 
