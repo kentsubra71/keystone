@@ -5,8 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1771687290590,
-      "tag": "0000_sharp_mesmero",
+      "when": 1776631789323,
+      "tag": "0000_black_weapon_omega",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776633594470,
+      "tag": "0001_outgoing_ares",
       "breakpoints": true
     }
   ]
