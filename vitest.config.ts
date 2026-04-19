@@ -12,6 +12,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  esbuild: {
+    // tsconfig uses jsx: "preserve" so Next can transform; Vitest needs its
+    // own transform for component tests. "automatic" avoids needing to import
+    // React in every test file.
+    jsx: "automatic",
+  },
   test: {
     globals: true,
     globalSetup: ["./src/test/setup-globals.ts"],
