@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { computeSnoozeUntil } from "@/lib/snooze";
+import { getUserPreferences } from "@/lib/client-preferences";
 import type { DueFromMeItem } from "@/types";
 
 const typeBadgeStyles = {
@@ -43,10 +45,15 @@ export function AllItemsView() {
 
   async function handleAction(itemId: string, action: "done" | "snooze" | "ignore") {
     try {
+      const body: Record<string, unknown> = { action };
+      if (action === "snooze") {
+        const prefs = await getUserPreferences();
+        body.snoozedUntil = computeSnoozeUntil(prefs.defaultSnoozePreset).toISOString();
+      }
       const res = await fetch(`/api/items/${itemId}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, snoozeDays: 1 }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
