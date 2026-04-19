@@ -1,6 +1,6 @@
 {
-  "id": "42ee0883-a3bf-4451-be7e-c0379da6629c",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "5e97d2d2-cec0-48a1-ac8c-d1444e85e32d",
+  "prevId": "42ee0883-a3bf-4451-be7e-c0379da6629c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -275,21 +275,6 @@
         }
       },
       "indexes": {
-        "idx_due_items_source_id": {
-          "name": "idx_due_items_source_id",
-          "columns": [
-            {
-              "expression": "source_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_due_items_status": {
           "name": "idx_due_items_status",
           "columns": [
@@ -323,7 +308,15 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "uq_due_items_source_id": {
+          "name": "uq_due_items_source_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "source_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -958,7 +951,8 @@
         "snooze",
         "delegate",
         "ignore",
-        "priority_override"
+        "priority_override",
+        "resurfaced"
       ]
     }
   },

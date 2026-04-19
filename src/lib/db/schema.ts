@@ -45,6 +45,7 @@ export const userActionTypeEnum = pgEnum("user_action_type", [
   "delegate",
   "ignore",
   "priority_override",
+  "resurfaced",
 ]);
 
 // Nudge types
@@ -139,7 +140,7 @@ export const dueFromMeItems = pgTable("due_from_me_items", {
   status: actionStatusEnum("status").notNull().default("not_started"),
   title: text("title").notNull(),
   source: itemSourceEnum("source").notNull(),
-  sourceId: text("source_id").notNull(),
+  sourceId: text("source_id").notNull().unique("uq_due_items_source_id"),
 
   // Accountability
   blockingWho: text("blocking_who"),
@@ -166,7 +167,6 @@ export const dueFromMeItems = pgTable("due_from_me_items", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
-  index("idx_due_items_source_id").on(table.sourceId),
   index("idx_due_items_status").on(table.status),
   index("idx_due_items_source").on(table.source),
 ]);
