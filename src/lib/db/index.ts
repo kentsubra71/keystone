@@ -6,6 +6,14 @@ import * as schema from "./schema";
 
 const testUrl = process.env.TEST_DB_URL;
 
+// `db`'s inferred type is a union: `NeonHttpDatabase<typeof schema>` in prod
+// (HTTP driver against Neon) and `NodePgDatabase<typeof schema>` in tests
+// (node-postgres against local Postgres). Both satisfy the same drizzle query
+// surface, but driver-specific features can behave differently between
+// environments: notably `.transaction()` semantics, raw `sql` execution, and
+// error shapes from the underlying client. Tests that exercise those areas
+// should go through `testDb()` in `src/test/db-helpers.ts` and not assume
+// parity with the Neon HTTP path.
 function buildDb() {
   if (testUrl) {
     const pool = new Pool({ connectionString: testUrl });

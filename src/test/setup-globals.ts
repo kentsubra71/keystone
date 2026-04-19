@@ -14,7 +14,8 @@ export async function setup() {
   } catch (err) {
     throw new Error(
       "Test DB not reachable at " + url
-      + ". Run `npm run test:db:up && npm run test:db:migrate` first."
+      + ". Run `npm run test:db:up && npm run test:db:migrate` first.",
+      { cause: err }
     );
   } finally {
     await client.end();
