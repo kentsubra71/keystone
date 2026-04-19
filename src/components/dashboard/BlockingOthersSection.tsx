@@ -3,16 +3,26 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ItemCard } from "./ItemCard";
 import { ItemDetailDrawer } from "./ItemDetailDrawer";
-import { Toast } from "@/components/ui/Toast";
+import { Toast, type ToastState } from "@/components/ui/Toast";
+import { logError } from "@/lib/logger";
 import type { DueFromMeItem } from "@/types";
 import type { EnrichedMeeting } from "@/app/api/meetings/upcoming/route";
 
+type ActionKind = "done" | "snooze" | "ignore";
+
+type ToastData =
+  | { state: "action"; message: string }
+  | { state: "passive"; message: string }
+  | { state: "error"; message: string; retry: () => void };
+
 type PendingAction = {
   itemId: string;
-  action: "done" | "snooze" | "ignore";
+  action: ActionKind;
   snoozedUntil?: Date;
   timeoutId: ReturnType<typeof setTimeout>;
 };
+
+const UNDO_WINDOW_MS = 5000;
 
 type BlockingOthersSectionProps = {
   meetings?: EnrichedMeeting[];
@@ -23,7 +33,8 @@ export function BlockingOthersSection({ meetings }: BlockingOthersSectionProps) 
   const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [selectedItem, setSelectedItem] = useState<DueFromMeItem | null>(null);
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [toast, setToast] = useState<ToastData | null>(null);
   const itemsRef = useRef<DueFromMeItem[]>([]);
 
   const fetchItems = useCallback(async () => {
@@ -36,7 +47,7 @@ export function BlockingOthersSection({ meetings }: BlockingOthersSectionProps) 
         itemsRef.current = fetched;
       }
     } catch (err) {
-      console.error("Failed to fetch blocking items:", err);
+      logError("fetch_blocking_items_failed", err);
     } finally {
       setIsLoading(false);
     }
@@ -46,45 +57,61 @@ export function BlockingOthersSection({ meetings }: BlockingOthersSectionProps) 
     fetchItems();
   }, [fetchItems]);
 
-  function handleActionWithUndo(itemId: string, action: "done" | "snooze" | "ignore", snoozedUntil?: Date) {
-    setSelectedItem(null);
+  function commitAction(itemId: string, action: ActionKind, snoozedUntil?: Date) {
+    const body: Record<string, unknown> = { action };
+    if (action === "snooze" && snoozedUntil) body.snoozedUntil = snoozedUntil.toISOString();
+    return fetch(`/api/items/${itemId}/action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
 
-    if (pendingAction) {
-      clearTimeout(pendingAction.timeoutId);
+  async function runCommit(itemId: string, action: ActionKind, snoozedUntil?: Date) {
+    try {
+      const res = await commitAction(itemId, action, snoozedUntil);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setToast({ state: "passive", message: "Saved" });
+    } catch (err) {
+      logError("item_action_commit_failed", err, { itemId, action });
+      setItems(itemsRef.current); // restore
+      setToast({
+        state: "error",
+        message: "Couldn't save. Try again.",
+        retry: () => {
+          setItems((prev) => prev.filter((i) => i.id !== itemId));
+          setToast(null);
+          void runCommit(itemId, action, snoozedUntil);
+        },
+      });
+    } finally {
+      setPending(null);
     }
+  }
+
+  function handleActionWithUndo(itemId: string, action: ActionKind, snoozedUntil?: Date) {
+    setSelectedItem(null);
+    if (pending) clearTimeout(pending.timeoutId);
 
     setItems((prev) => prev.filter((i) => i.id !== itemId));
 
-    const timeoutId = setTimeout(async () => {
-      try {
-        const body: Record<string, unknown> = { action };
-        if (action === "snooze" && snoozedUntil) body.snoozedUntil = snoozedUntil.toISOString();
-        await fetch(`/api/items/${itemId}/action`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      } catch (err) {
-        console.error("Action commit failed:", err);
-      }
-      setPendingAction(null);
-    }, 5000);
+    const timeoutId = setTimeout(() => {
+      void runCommit(itemId, action, snoozedUntil);
+    }, UNDO_WINDOW_MS);
+    setPending({ itemId, action, snoozedUntil, timeoutId });
 
-    setPendingAction({ itemId, action, snoozedUntil, timeoutId });
+    const label =
+      action === "done" ? "Marked as done" : action === "snooze" ? "Snoozed" : "Ignored";
+    setToast({ state: "action", message: label });
   }
 
   function handleUndo() {
-    if (!pendingAction) return;
-    clearTimeout(pendingAction.timeoutId);
-    setPendingAction(null);
+    if (!pending) return;
+    clearTimeout(pending.timeoutId);
+    setPending(null);
     setItems(itemsRef.current);
+    setToast(null);
   }
-
-  const actionLabel = pendingAction
-    ? pendingAction.action === "done" ? "Marked as done"
-    : pendingAction.action === "snooze" ? "Snoozed"
-    : "Ignored"
-    : "";
 
   return (
     <section>
@@ -147,12 +174,17 @@ export function BlockingOthersSection({ meetings }: BlockingOthersSectionProps) 
         />
       )}
 
-      {pendingAction && (
-        // @ts-expect-error - Task 14 will fix this to use state="action"
+      {toast && (
         <Toast
-          message={actionLabel}
-          undoAction={handleUndo}
-          onDismiss={() => setPendingAction(null)}
+          state={toast.state as ToastState}
+          message={toast.message}
+          undoAction={toast.state === "action" ? handleUndo : undefined}
+          action={
+            toast.state === "error"
+              ? { label: "Retry", onClick: toast.retry }
+              : undefined
+          }
+          onDismiss={() => setToast(null)}
         />
       )}
     </section>
