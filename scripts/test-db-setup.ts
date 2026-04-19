@@ -11,7 +11,7 @@ function ensureMigrationSql() {
   // `drizzle/*.sql` is gitignored in this repo, so a fresh clone only has the
   // meta snapshot. Regenerate the SQL file(s) if missing so migrate() can run.
   const migrationsDir = "./drizzle";
-  const env = { ...process.env } as Record<string, string>;
+  const env: NodeJS.ProcessEnv = { ...process.env };
   if (!env.DATABASE_URL) env.DATABASE_URL = url;
 
   if (!existsSync(migrationsDir)) {

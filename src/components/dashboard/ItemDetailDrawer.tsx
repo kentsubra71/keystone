@@ -24,7 +24,7 @@ type Thread = {
 type ItemDetailDrawerProps = {
   item: DueFromMeItem;
   onClose: () => void;
-  onAction: (itemId: string, action: "done" | "snooze" | "ignore", snoozeDays?: number) => void;
+  onAction: (itemId: string, action: "done" | "snooze" | "ignore", snoozedUntil?: Date) => void;
 };
 
 const typeBadgeStyles: Record<string, string> = {
@@ -363,7 +363,7 @@ export function ItemDetailDrawer({ item, onClose, onAction }: ItemDetailDrawerPr
                   <button
                     key={opt.days}
                     onClick={() => {
-                      onAction(item.id, "snooze", opt.days);
+                      onAction(item.id, "snooze", undefined);
                       setShowSnoozePicker(false);
                     }}
                     className="px-3 py-2 text-xs font-medium rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-400 hover:bg-amber-500/25 transition-colors"

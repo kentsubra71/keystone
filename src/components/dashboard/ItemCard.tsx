@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MeetingBadge } from "./MeetingBadge";
+import { SnoozePopover } from "./SnoozePopover";
+import { getUserPreferences } from "@/lib/client-preferences";
+import type { SnoozePreset } from "@/lib/snooze";
 import type { DueFromMeItem } from "@/types";
 import type { EnrichedMeeting } from "@/app/api/meetings/upcoming/route";
 
@@ -11,7 +14,7 @@ type ItemCardProps = {
   showOwner?: boolean;
   meetings?: EnrichedMeeting[];
   onSelect?: (item: DueFromMeItem) => void;
-  onAction?: (itemId: string, action: "done" | "snooze" | "ignore", snoozeDays?: number) => void;
+  onAction?: (itemId: string, action: "done" | "snooze" | "ignore", snoozedUntil?: Date) => void;
   onActionComplete?: () => void;
 };
 
@@ -38,29 +41,42 @@ const typeLabels = {
 
 export function ItemCard({ item, showBlockedPerson, showOwner, meetings, onSelect, onAction, onActionComplete }: ItemCardProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [showSnoozePicker, setShowSnoozePicker] = useState(false);
+  const [showSnoozePopover, setShowSnoozePopover] = useState(false);
+  const [defaultPreset, setDefaultPreset] = useState<SnoozePreset>("3_days");
+  const popoverRef = useRef<HTMLDivElement>(null);
 
-  async function handleAction(action: "done" | "snooze" | "ignore", snoozeDays?: number) {
+  useEffect(() => {
+    getUserPreferences().then(p => setDefaultPreset(p.defaultSnoozePreset));
+  }, []);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!showSnoozePopover) return;
+    function onDoc(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setShowSnoozePopover(false);
+      }
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [showSnoozePopover]);
+
+  async function handleAction(action: "done" | "snooze" | "ignore", snoozedUntil?: Date) {
     if (onAction) {
-      onAction(item.id, action, snoozeDays);
+      onAction(item.id, action, snoozedUntil);
       return;
     }
 
     setIsLoading(true);
     try {
+      const body: Record<string, unknown> = { action };
+      if (action === "snooze" && snoozedUntil) body.snoozedUntil = snoozedUntil.toISOString();
       const res = await fetch(`/api/items/${item.id}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, snoozeDays: snoozeDays || 1 }),
+        body: JSON.stringify(body),
       });
-
-      if (res.ok) {
-        onActionComplete?.();
-      } else {
-        console.error("Action failed");
-      }
-    } catch (err) {
-      console.error("Action error:", err);
+      if (res.ok) onActionComplete?.();
     } finally {
       setIsLoading(false);
     }
@@ -80,37 +96,23 @@ export function ItemCard({ item, showBlockedPerson, showOwner, meetings, onSelec
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${typeBadgeStyles[item.type]}`}
-            >
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${typeBadgeStyles[item.type]}`}>
               {typeLabels[item.type]}
             </span>
-            <span className="text-xs text-gray-600 dark:text-gray-300">
-              {item.agingDays}d ago
-            </span>
+            <span className="text-xs text-gray-600 dark:text-gray-300">{item.agingDays}d ago</span>
             {meetings && <MeetingBadge meetings={meetings} itemId={item.id} />}
           </div>
-
-          <h3 className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-            {item.title}
-          </h3>
-
+          <h3 className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{item.title}</h3>
           {showBlockedPerson && item.blockingWho && (
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
               Blocking: <span className="text-rose-800 dark:text-rose-300">{item.blockingWho}</span>
             </p>
           )}
           {showOwner && item.ownerEmail && (
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Owner: {item.ownerEmail}
-            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Owner: {item.ownerEmail}</p>
           )}
-
-          <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-2">
-            {item.rationale}
-          </p>
+          <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-2">{item.rationale}</p>
         </div>
-
         <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
           {item.suggestedAction && (
             <span className="px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-500/10 text-brand-700 dark:text-brand-300 text-center max-w-[180px] truncate">
@@ -120,21 +122,16 @@ export function ItemCard({ item, showBlockedPerson, showOwner, meetings, onSelec
         </div>
       </div>
 
-      <div
-        className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700/40 flex items-center justify-between"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700/40 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-600 dark:text-gray-300">
-            {item.confidenceScore}% confidence
-          </span>
+          <span className="text-xs text-gray-600 dark:text-gray-300">{item.confidenceScore}% confidence</span>
           {gmailUrl && (
             <a
               href={gmailUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-brand-700 dark:text-brand-300 hover:text-brand-600 dark:hover:text-brand-200 inline-flex items-center gap-1 transition-colors"
               onClick={(e) => e.stopPropagation()}
+              className="text-xs text-brand-700 dark:text-brand-300 hover:text-brand-600 dark:hover:text-brand-200 inline-flex items-center gap-1 transition-colors"
             >
               Gmail
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -143,7 +140,6 @@ export function ItemCard({ item, showBlockedPerson, showOwner, meetings, onSelec
             </a>
           )}
         </div>
-
         <div className="flex items-center gap-3">
           <button
             onClick={() => handleAction("done")}
@@ -153,41 +149,25 @@ export function ItemCard({ item, showBlockedPerson, showOwner, meetings, onSelec
             Done
           </button>
 
-          {showSnoozePicker ? (
-            <div className="flex items-center gap-1.5">
-              {[
-                { label: "1d", days: 1 },
-                { label: "3d", days: 3 },
-                { label: "1w", days: 7 },
-              ].map((opt) => (
-                <button
-                  key={opt.days}
-                  onClick={() => {
-                    handleAction("snooze", opt.days);
-                    setShowSnoozePicker(false);
-                  }}
-                  disabled={isLoading}
-                  className="text-xs px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-400 hover:bg-amber-500/25 disabled:opacity-50 transition-colors"
-                >
-                  {opt.label}
-                </button>
-              ))}
-              <button
-                onClick={() => setShowSnoozePicker(false)}
-                className="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-500"
-              >
-                x
-              </button>
-            </div>
-          ) : (
+          <div className="relative" ref={popoverRef}>
             <button
-              onClick={() => setShowSnoozePicker(true)}
+              onClick={() => setShowSnoozePopover((v) => !v)}
               disabled={isLoading}
               className="text-xs text-gray-600 dark:text-gray-300 hover:text-amber-500 dark:hover:text-amber-400 disabled:opacity-50 transition-colors"
             >
               Snooze
             </button>
-          )}
+            {showSnoozePopover && (
+              <SnoozePopover
+                defaultPreset={defaultPreset}
+                onPick={(snoozedUntil) => {
+                  setShowSnoozePopover(false);
+                  handleAction("snooze", snoozedUntil);
+                }}
+                onClose={() => setShowSnoozePopover(false)}
+              />
+            )}
+          </div>
 
           <button
             onClick={() => handleAction("ignore")}

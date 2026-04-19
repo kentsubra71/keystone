@@ -10,7 +10,7 @@ import type { EnrichedMeeting } from "@/app/api/meetings/upcoming/route";
 type PendingAction = {
   itemId: string;
   action: "done" | "snooze" | "ignore";
-  snoozeDays?: number;
+  snoozedUntil?: Date;
   timeoutId: ReturnType<typeof setTimeout>;
 };
 
@@ -46,7 +46,7 @@ export function DueFromMeSection({ meetings }: DueFromMeSectionProps) {
     fetchItems();
   }, [fetchItems]);
 
-  function handleActionWithUndo(itemId: string, action: "done" | "snooze" | "ignore", snoozeDays?: number) {
+  function handleActionWithUndo(itemId: string, action: "done" | "snooze" | "ignore", snoozedUntil?: Date) {
     setSelectedItem(null);
 
     if (pendingAction) {
@@ -57,10 +57,12 @@ export function DueFromMeSection({ meetings }: DueFromMeSectionProps) {
 
     const timeoutId = setTimeout(async () => {
       try {
+        const body: Record<string, unknown> = { action };
+        if (action === "snooze" && snoozedUntil) body.snoozedUntil = snoozedUntil.toISOString();
         await fetch(`/api/items/${itemId}/action`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, snoozeDays: snoozeDays || 1 }),
+          body: JSON.stringify(body),
         });
       } catch (err) {
         console.error("Action commit failed:", err);
@@ -68,7 +70,7 @@ export function DueFromMeSection({ meetings }: DueFromMeSectionProps) {
       setPendingAction(null);
     }, 5000);
 
-    setPendingAction({ itemId, action, snoozeDays, timeoutId });
+    setPendingAction({ itemId, action, snoozedUntil, timeoutId });
   }
 
   function handleUndo() {
@@ -80,7 +82,7 @@ export function DueFromMeSection({ meetings }: DueFromMeSectionProps) {
 
   const actionLabel = pendingAction
     ? pendingAction.action === "done" ? "Marked as done"
-    : pendingAction.action === "snooze" ? `Snoozed for ${pendingAction.snoozeDays || 1} day${(pendingAction.snoozeDays || 1) > 1 ? "s" : ""}`
+    : pendingAction.action === "snooze" ? "Snoozed"
     : "Ignored"
     : "";
 
