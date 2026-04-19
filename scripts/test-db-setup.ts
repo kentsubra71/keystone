@@ -11,7 +11,14 @@ function ensureMigrationSql() {
   // `drizzle/*.sql` is gitignored in this repo, so a fresh clone only has the
   // meta snapshot. Regenerate the SQL file(s) if missing so migrate() can run.
   const migrationsDir = "./drizzle";
-  if (!existsSync(migrationsDir)) return;
+  const env = { ...process.env } as Record<string, string>;
+  if (!env.DATABASE_URL) env.DATABASE_URL = url;
+
+  if (!existsSync(migrationsDir)) {
+    console.log("drizzle/ folder missing; generating from schema...");
+    execSync("npx drizzle-kit generate", { stdio: "inherit", env });
+    return;
+  }
 
   const sqlFiles = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql"));
   if (sqlFiles.length > 0) return;
@@ -25,8 +32,6 @@ function ensureMigrationSql() {
     rmSync(metaDir, { recursive: true, force: true });
   }
 
-  const env = { ...process.env } as Record<string, string>;
-  if (!env.DATABASE_URL) env.DATABASE_URL = url;
   execSync("npx drizzle-kit generate", { stdio: "inherit", env });
 }
 
