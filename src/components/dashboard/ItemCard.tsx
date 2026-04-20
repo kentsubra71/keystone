@@ -149,11 +149,11 @@ export function ItemCard({ item, showBlockedPerson, showOwner, meetings, onSelec
             Done
           </button>
 
-          <div className="relative" ref={popoverRef}>
+          <span className="relative inline-flex" ref={popoverRef}>
             <button
               onClick={() => setShowSnoozePopover((v) => !v)}
               disabled={isLoading}
-              className="text-xs text-gray-600 dark:text-gray-300 hover:text-amber-500 dark:hover:text-amber-400 disabled:opacity-50 transition-colors"
+              className="text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-amber-500 dark:hover:text-amber-400 disabled:opacity-50 transition-colors"
             >
               Snooze
             </button>
@@ -167,12 +167,12 @@ export function ItemCard({ item, showBlockedPerson, showOwner, meetings, onSelec
                 onClose={() => setShowSnoozePopover(false)}
               />
             )}
-          </div>
+          </span>
 
           <button
             onClick={() => handleAction("ignore")}
             disabled={isLoading}
-            className="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50 transition-colors"
+            className="text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50 transition-colors"
           >
             Ignore
           </button>
