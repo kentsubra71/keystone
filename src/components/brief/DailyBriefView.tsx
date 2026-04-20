@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Toast } from "@/components/ui/Toast";
+import { logError } from "@/lib/logger";
 
 type BriefContent = {
   topDueItems: {
@@ -31,43 +33,96 @@ type BriefContent = {
   generatedAt: string;
 };
 
+type ToastData =
+  | { state: "passive"; message: string }
+  | { state: "error"; message: string; retry?: () => void };
+
 export function DailyBriefView() {
   const [brief, setBrief] = useState<BriefContent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [toast, setToast] = useState<ToastData | null>(null);
 
-  useEffect(() => {
-    fetchBrief();
-  }, []);
-
-  async function fetchBrief() {
+  const fetchBrief = useCallback(async () => {
     try {
       const res = await fetch("/api/brief");
       if (res.ok) {
         const data = await res.json();
         setBrief(data.brief);
+        return;
       }
+      if (res.status === 404) {
+        // No brief generated yet — empty state renders.
+        return;
+      }
+      logError("brief_fetch_failed", `HTTP ${res.status}`, { status: res.status });
+      setToast({
+        state: "error",
+        message: `Couldn't load brief (HTTP ${res.status}).`,
+        retry: () => {
+          setToast(null);
+          void fetchBrief();
+        },
+      });
     } catch (err) {
-      console.error("Failed to fetch brief:", err);
+      logError("brief_fetch_failed", err);
+      setToast({
+        state: "error",
+        message: "Couldn't load brief. Network error.",
+        retry: () => {
+          setToast(null);
+          void fetchBrief();
+        },
+      });
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
 
-  async function generateNewBrief() {
+  useEffect(() => {
+    void fetchBrief();
+  }, [fetchBrief]);
+
+  const generateNewBrief = useCallback(async () => {
     setIsGenerating(true);
     try {
       const res = await fetch("/api/brief", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        setBrief(data.brief);
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const body = await res.json();
+          if (body?.error) detail = typeof body.error === "string" ? body.error : JSON.stringify(body.error);
+        } catch {
+          // ignore body parse failure
+        }
+        logError("brief_generate_failed", `HTTP ${res.status}`, { status: res.status, detail });
+        setToast({
+          state: "error",
+          message: `Couldn't generate brief (HTTP ${res.status}${detail ? ` — ${detail}` : ""}).`,
+          retry: () => {
+            setToast(null);
+            void generateNewBrief();
+          },
+        });
+        return;
       }
+      const data = await res.json();
+      setBrief(data.brief);
+      setToast({ state: "passive", message: "Brief regenerated" });
     } catch (err) {
-      console.error("Failed to generate brief:", err);
+      logError("brief_generate_failed", err);
+      setToast({
+        state: "error",
+        message: "Couldn't generate brief. Network error.",
+        retry: () => {
+          setToast(null);
+          void generateNewBrief();
+        },
+      });
     } finally {
       setIsGenerating(false);
     }
-  }
+  }, []);
 
   if (isLoading) {
     return (
@@ -203,6 +258,15 @@ export function DailyBriefView() {
             </section>
           )}
         </>
+      )}
+
+      {toast && (
+        <Toast
+          state={toast.state}
+          message={toast.message}
+          action={toast.state === "error" && toast.retry ? { label: "Retry", onClick: toast.retry } : undefined}
+          onDismiss={() => setToast(null)}
+        />
       )}
     </div>
   );
